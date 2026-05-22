@@ -51,10 +51,18 @@ TERMS = {
 }
 
 
+_APP_DIR = Path(__file__).resolve().parent
+
 FONT_CANDIDATES = [
     os.getenv("ORDERHELPER_FONT_PATH", ""),
+    # Bundled in the deployment zip (works on Azure App Service Oryx).
+    str(_APP_DIR / "fonts" / "NotoSansTC-VariableFont_wght.ttf"),
+    str(_APP_DIR / "fonts" / "NotoSansTC-Regular.otf"),
+    str(_APP_DIR / "fonts" / "NotoSansCJK-Regular.ttc"),
+    # Windows local dev.
     r"C:\Windows\Fonts\NotoSansTC-VF.ttf",
     r"C:\Windows\Fonts\NotoSansCJK-Regular.ttc",
+    # Linux apt install fonts-noto-cjk (e.g. local docker).
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansTC-Regular.otf",
     "/usr/share/fonts/truetype/noto/NotoSansTC-Regular.ttf",

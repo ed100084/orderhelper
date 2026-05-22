@@ -14,8 +14,8 @@ Completed:
 - PDF generation endpoint available at `/generate`.
 - Health check endpoint available at `/health`.
 - CLI generation path preserved for local testing.
-- Dockerfile added for Azure App Service for Containers.
 - Runtime font strategy changed from Windows `MingLiU` to deployable `Noto Sans TC/CJK`.
+- Azure deployment configured for **App Service (Linux) with native Python 3.12 runtime** (no Docker). See `DEPLOY.md`.
 - Excel/PDF/DOCX samples and generated files are ignored by git.
 
 Latest known pushed commit:
@@ -50,36 +50,19 @@ http://127.0.0.1:8000/
 python app.py --input .\orders.xlsx --output .\orders.pdf --date 2026-04-30
 ```
 
-## Docker
+## Azure Deployment
 
-```powershell
-docker build -t orderhelper .
-docker run --rm -p 8000:8000 orderhelper
-```
+Target: **Azure App Service (Linux) with native Python 3.12 runtime**. No container.
 
-The container installs `fonts-noto-cjk` and runs:
+CI/CD: GitHub Actions zip deploy via OIDC (no long-lived secrets).
 
-```text
-uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
-```
+See [`DEPLOY.md`](./DEPLOY.md) for full provisioning, deployment, and operations.
 
-## Azure App Service
-
-Recommended target: Azure App Service for Containers.
-
-Use this repository as the deployment source, or build the Docker image and deploy it to Azure Container Registry. The app exposes:
+Endpoints:
 
 - `/` upload form
 - `/generate` PDF generation endpoint
 - `/health` health check endpoint
-
-Suggested Azure direction:
-
-1. Use Azure App Service for Containers.
-2. Build from the repository Dockerfile.
-3. Ensure the container listens on `${PORT:-8000}`.
-4. Enable App Service Authentication / Easy Auth before exposing to real users.
-5. Consider making the GitHub repository private before production deployment.
 
 ## Validation Performed
 
