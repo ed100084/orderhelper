@@ -19,3 +19,9 @@ font_test*.pdf
 sample_output.pdf
 web_output.pdf
 test_download.pdf
+
+# Azure CLI cache
+.azure/
+
+# Local notes
+prompt.txt
