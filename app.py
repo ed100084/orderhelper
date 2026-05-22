@@ -21,6 +21,10 @@ from reportlab.pdfgen import canvas
 PAGE_W, PAGE_H = landscape(A4)
 FONT = "OrderFormNotoSansTC"
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+TEXT_REPLACEMENTS = {
+    # Windows PMingLiU contains U+9039, but bundled Noto Sans TC does not.
+    "逹": "達",
+}
 DETAIL_TOP = 410.56
 DETAIL_BOTTOM = 58.0
 DETAIL_HEADER_H = 19.52
@@ -123,7 +127,10 @@ def _text(value) -> str:
         return ""
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
-    return str(value).strip()
+    text = str(value).strip()
+    for source, target in TEXT_REPLACEMENTS.items():
+        text = text.replace(source, target)
+    return text
 
 
 def _font_path() -> str:
