@@ -28,8 +28,31 @@ http://127.0.0.1:8000/
 python app.py --input .\orders.xlsx --output .\orders.pdf --date 2026-04-30
 ```
 
+## Docker
+
+```powershell
+docker build -t orderhelper .
+docker run --rm -p 8000:8000 orderhelper
+```
+
+The container installs `fonts-noto-cjk` and runs:
+
+```text
+uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+## Azure App Service
+
+Recommended target: Azure App Service for Containers.
+
+Use this repository as the deployment source, or build the Docker image and deploy it to Azure Container Registry. The app exposes:
+
+- `/` upload form
+- `/generate` PDF generation endpoint
+- `/health` health check endpoint
+
 ## Notes
 
 - Uploaded Excel files and generated PDFs are intentionally ignored by git.
 - The PDF layout is generated with fixed coordinates and is expected to be refined against the hospital's reference PDF.
-- The app currently uses Windows MingLiU fonts for Traditional Chinese PDF output.
+- The app uses Noto Sans TC/CJK for Traditional Chinese PDF output. Set `ORDERHELPER_FONT_PATH` if the runtime needs an explicit font file path.

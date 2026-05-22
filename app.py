@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 import argparse
-import html
 import io
+import os
 import re
-import tempfile
-import warnings
 from dataclasses import dataclass
 from datetime import date
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-import cgi
-
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from openpyxl import load_workbook
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfbase import pdfmetrics
@@ -23,8 +19,10 @@ from reportlab.pdfgen import canvas
 
 
 PAGE_W, PAGE_H = landscape(A4)
-FONT = "MingLiU"
-FONT_BOLD = "MingLiU-Bold"
+FONT = "OrderFormNotoSansTC"
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+
+app = FastAPI(title="Order Helper", version="0.2.0")
 
 
 @dataclass
@@ -53,6 +51,48 @@ TERMS = {
 }
 
 
+FONT_CANDIDATES = [
+    os.getenv("ORDERHELPER_FONT_PATH", ""),
+    r"C:\Windows\Fonts\NotoSansTC-VF.ttf",
+    r"C:\Windows\Fonts\NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansTC-Regular.otf",
+    "/usr/share/fonts/truetype/noto/NotoSansTC-Regular.ttf",
+]
+
+
+INDEX_HTML = """<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>義大醫院訂購單 PDF 產生器</title>
+  <style>
+    body { font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif; margin: 40px; color: #1f2933; }
+    main { max-width: 720px; }
+    label { display: block; margin: 18px 0 6px; font-weight: 700; }
+    input[type=file], input[type=date] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #9aa5b1; border-radius: 4px; }
+    button { margin-top: 22px; padding: 10px 18px; border: 0; border-radius: 4px; background: #205493; color: white; font-weight: 700; cursor: pointer; }
+    p { line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>義大醫院訂購單 PDF 產生器</h1>
+    <p>上傳 Excel 後，系統會依「訂單」工作表的原始順序，一筆訂單產生一頁，並輸出單一 PDF。</p>
+    <form method="post" action="/generate" enctype="multipart/form-data">
+      <label for="excel">Excel 檔案</label>
+      <input id="excel" name="excel" type="file" accept=".xlsx" required>
+      <label for="order_date">訂貨日期</label>
+      <input id="order_date" name="order_date" type="date">
+      <button type="submit">產生 PDF</button>
+    </form>
+  </main>
+</body>
+</html>
+"""
+
+
 def _text(value) -> str:
     if value is None:
         return ""
@@ -61,12 +101,25 @@ def _text(value) -> str:
     return str(value).strip()
 
 
+def _font_path() -> str:
+    for candidate in FONT_CANDIDATES:
+        if candidate and Path(candidate).exists():
+            return candidate
+    raise RuntimeError(
+        "找不到可用的 Noto Sans TC/CJK 字型。"
+        "請安裝 fonts-noto-cjk，或設定 ORDERHELPER_FONT_PATH 指向字型檔。"
+    )
+
+
 def register_fonts() -> None:
-    registered = set(pdfmetrics.getRegisteredFontNames())
-    if FONT not in registered:
-        pdfmetrics.registerFont(TTFont(FONT, r"C:\Windows\Fonts\mingliu.ttc", subfontIndex=0))
-    if FONT_BOLD not in registered:
-        pdfmetrics.registerFont(TTFont(FONT_BOLD, r"C:\Windows\Fonts\mingliub.ttc", subfontIndex=0))
+    if FONT in set(pdfmetrics.getRegisteredFontNames()):
+        return
+    path = _font_path()
+    suffix = Path(path).suffix.lower()
+    if suffix == ".ttc":
+        pdfmetrics.registerFont(TTFont(FONT, path, subfontIndex=0))
+    else:
+        pdfmetrics.registerFont(TTFont(FONT, path))
 
 
 def _draw_string(c: canvas.Canvas, x: float, y: float, text: str) -> None:
@@ -82,8 +135,8 @@ def _draw_center(c: canvas.Canvas, x: float, y: float, text: str) -> None:
 
 
 def _draw_center_bold(c: canvas.Canvas, x: float, y: float, text: str) -> None:
-    c.drawCentredString(x, y, _text(text))
-    c.drawCentredString(x + 0.35, y, _text(text))
+    _draw_center(c, x, y, text)
+    _draw_center(c, x + 0.35, y, text)
 
 
 def _find_order_sheet(workbook):
@@ -102,8 +155,8 @@ def _find_order_sheet(workbook):
     raise ValueError("找不到包含「訂購單號」與「廠商」欄位的訂單工作表。")
 
 
-def read_orders(path: Path) -> list[OrderRow]:
-    wb = load_workbook(path, data_only=True, read_only=True)
+def read_orders(source) -> list[OrderRow]:
+    wb = load_workbook(source, data_only=True, read_only=True)
     try:
         ws, header_row, cols = _find_order_sheet(wb)
         orders: list[OrderRow] = []
@@ -139,7 +192,7 @@ def infer_order_date(filename: str, orders: list[OrderRow]) -> str:
     return date.today().isoformat()
 
 
-def _fit_text(c: canvas.Canvas, text: str, max_width: float, font_name: str, font_size: float) -> list[str]:
+def _fit_text(text: str, max_width: float, font_name: str, font_size: float) -> list[str]:
     lines: list[str] = []
     current = ""
     for char in text:
@@ -237,7 +290,7 @@ def _draw_order(c: canvas.Canvas, order: OrderRow, order_date: str) -> None:
     _draw_string(c, 691.0, 398.7, order.unit)
     _draw_right(c, 812.0, 398.7, order.quantity)
 
-    for idx, line in enumerate(_fit_text(c, order.name, 345, FONT, 12)):
+    for idx, line in enumerate(_fit_text(order.name, 345, FONT, 12)):
         _draw_string(c, 321.4, 398.7 - idx * 14.4, line)
 
 
@@ -255,95 +308,43 @@ def build_pdf(orders: list[OrderRow], output, order_date: str) -> None:
     c.save()
 
 
-def build_pdf_from_excel(excel_path: Path, output, order_date: str | None = None) -> tuple[int, str]:
-    orders = read_orders(excel_path)
-    final_date = order_date or infer_order_date(excel_path.name, orders)
+def build_pdf_from_excel(excel_source, output, filename: str = "orders.xlsx", order_date: str | None = None) -> tuple[int, str]:
+    orders = read_orders(excel_source)
+    final_date = order_date or infer_order_date(filename, orders)
     build_pdf(orders, str(output) if isinstance(output, Path) else output, final_date)
     return len(orders), final_date
 
 
-INDEX_HTML = """<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>義大醫院訂購單 PDF 產生器</title>
-  <style>
-    body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 40px; color: #1f2933; }
-    main { max-width: 720px; }
-    label { display: block; margin: 18px 0 6px; font-weight: 700; }
-    input[type=file], input[type=date] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #9aa5b1; border-radius: 4px; }
-    button { margin-top: 22px; padding: 10px 18px; border: 0; border-radius: 4px; background: #205493; color: white; font-weight: 700; cursor: pointer; }
-    p { line-height: 1.7; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>義大醫院訂購單 PDF 產生器</h1>
-    <p>上傳 Excel 後，系統會依「訂單」工作表的原始順序，一筆訂單產生一頁，並輸出單一 PDF。</p>
-    <form method="post" action="/generate" enctype="multipart/form-data">
-      <label for="excel">Excel 檔案</label>
-      <input id="excel" name="excel" type="file" accept=".xlsx" required>
-      <label for="order_date">訂貨日期</label>
-      <input id="order_date" name="order_date" type="date">
-      <button type="submit">產生 PDF</button>
-    </form>
-  </main>
-</body>
-</html>
-"""
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    return INDEX_HTML
 
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        if self.path != "/":
-            self.send_error(404)
-            return
-        body = INDEX_HTML.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_POST(self) -> None:
-        if self.path != "/generate":
-            self.send_error(404)
-            return
-        try:
-            form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={"REQUEST_METHOD": "POST"})
-            upload = form["excel"]
-            order_date = _text(form.getvalue("order_date")) or None
-            filename = Path(upload.filename or "orders.xlsx").name
-            with tempfile.TemporaryDirectory() as tmp:
-                excel_path = Path(tmp) / "input.xlsx"
-                excel_path.write_bytes(upload.file.read())
-                out = io.BytesIO()
-                count, final_date = build_pdf_from_excel(excel_path, out, order_date)
-            pdf = out.getvalue()
-            safe_name = f"{Path(filename).stem}_訂購單_{final_date}_{count}筆.pdf"
-            self.send_response(200)
-            self.send_header("Content-Type", "application/pdf")
-            self.send_header("Content-Length", str(len(pdf)))
-            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(safe_name)}")
-            self.end_headers()
-            self.wfile.write(pdf)
-        except Exception as exc:
-            body = f"<h1>產生失敗</h1><pre>{html.escape(str(exc))}</pre>".encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+@app.get("/health")
+def health() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
 
 
-def serve(port: int) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+@app.post("/generate")
+async def generate_pdf(excel: UploadFile = File(...), order_date: str | None = Form(default=None)):
+    filename = Path(excel.filename or "orders.xlsx").name
+    if not filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="只接受 .xlsx 檔案。")
+
+    content = await excel.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"檔案太大，限制為 {MAX_UPLOAD_BYTES // 1024 // 1024} MB。")
+
     try:
-        print(f"Serving on http://127.0.0.1:{port}", flush=True)
-    except Exception:
-        pass
-    server.serve_forever()
+        output = io.BytesIO()
+        count, final_date = build_pdf_from_excel(io.BytesIO(content), output, filename=filename, order_date=order_date or None)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    output.seek(0)
+    safe_name = f"{Path(filename).stem}_訂購單_{final_date}_{count}筆.pdf"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_name)}"}
+    return StreamingResponse(output, media_type="application/pdf", headers=headers)
 
 
 def main() -> None:
@@ -351,13 +352,16 @@ def main() -> None:
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path, default=Path("訂購單_output.pdf"))
     parser.add_argument("--date")
+    parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     if args.input:
-        count, final_date = build_pdf_from_excel(args.input, args.output, args.date)
+        count, final_date = build_pdf_from_excel(args.input, args.output, filename=args.input.name, order_date=args.date)
         print(f"wrote {args.output} ({count} pages, date {final_date})")
     else:
-        serve(args.port)
+        import uvicorn
+
+        uvicorn.run("app:app", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
