@@ -55,7 +55,9 @@ _APP_DIR = Path(__file__).resolve().parent
 
 FONT_CANDIDATES = [
     os.getenv("ORDERHELPER_FONT_PATH", ""),
-    # Bundled in the deployment zip (works on Azure App Service Oryx).
+    # Bundled in the deployment zip. Bold first so all text renders bold.
+    str(_APP_DIR / "fonts" / "NotoSansTC-Bold.otf"),
+    str(_APP_DIR / "fonts" / "NotoSansTC-Bold.ttf"),
     str(_APP_DIR / "fonts" / "NotoSansTC-VariableFont_wght.ttf"),
     str(_APP_DIR / "fonts" / "NotoSansTC-Regular.otf"),
     str(_APP_DIR / "fonts" / "NotoSansCJK-Regular.ttc"),
@@ -119,10 +121,38 @@ def _font_path() -> str:
     )
 
 
+def _instance_variable_font(path: str, weight: int = 700) -> str:
+    """If `path` is a variable font with a weight axis, return a cached static
+    instance at the requested weight (default 700 = Bold). Otherwise return
+    `path` unchanged. Silently falls back if fontTools is unavailable."""
+    try:
+        from fontTools.ttLib import TTFont as _FTFont
+        from fontTools.varLib.instancer import instantiateVariableFont
+    except ImportError:
+        return path
+    try:
+        ft = _FTFont(path)
+    except Exception:
+        return path
+    if "fvar" not in ft:
+        return path  # not a variable font
+
+    cache_dir = Path(os.getenv("TMPDIR", "/tmp"))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{Path(path).stem}-static-w{weight}.ttf"
+    if cache_path.exists():
+        return str(cache_path)
+    static = instantiateVariableFont(ft, {"wght": weight})
+    static.save(str(cache_path))
+    return str(cache_path)
+
+
 def register_fonts() -> None:
     if FONT in set(pdfmetrics.getRegisteredFontNames()):
         return
     path = _font_path()
+    weight = int(os.getenv("ORDERHELPER_FONT_WEIGHT", "700"))
+    path = _instance_variable_font(path, weight=weight)
     suffix = Path(path).suffix.lower()
     if suffix == ".ttc":
         pdfmetrics.registerFont(TTFont(FONT, path, subfontIndex=0))
