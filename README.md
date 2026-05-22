@@ -35,8 +35,9 @@ The current workflow:
 
 1. Upload an `.xlsx` file.
 2. Read the order sheet in Excel row order.
-3. Generate one PDF page per order row.
-4. Return one combined PDF.
+3. Group rows by vendor name while preserving the first vendor appearance order.
+4. Generate one or more PDF pages per vendor, depending on how many detail rows fit.
+5. Return one combined PDF.
 
 ## Local Run
 
@@ -105,12 +106,13 @@ python app.py --host 127.0.0.1 --port 8000
 {"status":"ok"}
 ```
 
-- `/generate` accepted the sample Excel upload and returned HTTP 200 with a 96-page PDF.
+- `/generate` accepted the sample Excel upload and returned HTTP 200.
+- CLI generation from `mail訂購--1150430.xlsx` produced 9 vendors, 96 rows, and a 13-page grouped PDF.
 
 ## Known Follow-Ups
 
 - PDF layout still needs visual fine-tuning against `1031訂單PDF.PDF`.
-- Current output intentionally uses fixed PDF coordinates, one Excel row per PDF page.
+- Current output intentionally uses fixed PDF coordinates, grouping multiple Excel rows into vendor order pages.
 - Noto Sans TC changes the visual metrics compared with the original PDF font, so x/y positions and column widths may need adjustment.
 - Authentication is not implemented in application code. Prefer Azure App Service Easy Auth for external deployment.
 - Upload limit defaults to 15 MB and can be changed with `MAX_UPLOAD_BYTES`.

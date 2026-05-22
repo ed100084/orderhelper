@@ -21,6 +21,12 @@ from reportlab.pdfgen import canvas
 PAGE_W, PAGE_H = landscape(A4)
 FONT = "OrderFormNotoSansTC"
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+DETAIL_TOP = 410.56
+DETAIL_BOTTOM = 58.0
+DETAIL_HEADER_H = 19.52
+DETAIL_LINE_H = 10.2
+DETAIL_ROW_PAD = 4.0
+DETAIL_MIN_ROW_H = 24.0
 
 app = FastAPI(title="Order Helper", version="0.2.0")
 
@@ -36,6 +42,16 @@ class OrderRow:
     vendor: str
     tel: str
     fax: str
+
+
+@dataclass
+class VendorPage:
+    vendor: str
+    tel: str
+    fax: str
+    page_no: int
+    total_pages: int
+    orders: list[OrderRow]
 
 
 TERMS = {
@@ -88,7 +104,7 @@ INDEX_HTML = """<!doctype html>
 <body>
   <main>
     <h1>義大醫院訂購單 PDF 產生器</h1>
-    <p>上傳 Excel 後，系統會依「訂單」工作表的原始順序，一筆訂單產生一頁，並輸出單一 PDF。</p>
+    <p>上傳 Excel 後，系統會依廠商合併訂購明細；同一廠商多筆藥品會排在同一張訂單，並輸出單一 PDF。</p>
     <form method="post" action="/generate" enctype="multipart/form-data">
       <label for="excel">Excel 檔案</label>
       <input id="excel" name="excel" type="file" accept=".xlsx" required>
@@ -176,6 +192,27 @@ def _draw_center_bold(c: canvas.Canvas, x: float, y: float, text: str) -> None:
     _draw_center(c, x + 0.35, y, text)
 
 
+def _draw_fit_string(
+    c: canvas.Canvas,
+    x: float,
+    y: float,
+    text: str,
+    max_width: float,
+    font_size: float,
+    min_font_size: float = 7.0,
+) -> None:
+    value = _text(text)
+    size = font_size
+    while size > min_font_size and pdfmetrics.stringWidth(value, FONT, size) > max_width:
+        size -= 0.5
+    c.setFont(FONT, size)
+    _draw_string(c, x, y, value)
+
+
+def _vendor_key(order: OrderRow) -> str:
+    return order.vendor
+
+
 def _find_order_sheet(workbook):
     for ws in workbook.worksheets:
         for row_no, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), 1):
@@ -244,10 +281,68 @@ def _fit_text(text: str, max_width: float, font_name: str, font_size: float) -> 
     return lines[:5]
 
 
-def _draw_rects(c: canvas.Canvas) -> None:
+def _fit_detail_name(text: str) -> list[str]:
+    return _fit_text(text, 345, FONT, 9) or [""]
+
+
+def _detail_row_height(order: OrderRow) -> float:
+    line_count = max(1, len(_fit_detail_name(order.name)))
+    return max(DETAIL_MIN_ROW_H, DETAIL_ROW_PAD * 2 + line_count * DETAIL_LINE_H)
+
+
+def _paginate_vendor_orders(orders: list[OrderRow]) -> list[list[OrderRow]]:
+    pages: list[list[OrderRow]] = []
+    current: list[OrderRow] = []
+    used_height = 0.0
+    capacity = DETAIL_TOP - DETAIL_HEADER_H - DETAIL_BOTTOM
+    for order in orders:
+        row_height = _detail_row_height(order)
+        if current and used_height + row_height > capacity:
+            pages.append(current)
+            current = []
+            used_height = 0.0
+        current.append(order)
+        used_height += row_height
+    if current:
+        pages.append(current)
+    return pages
+
+
+def build_vendor_pages(orders: list[OrderRow]) -> list[VendorPage]:
+    grouped: dict[str, list[OrderRow]] = {}
+    keys: list[str] = []
+    for order in orders:
+        key = _vendor_key(order)
+        if key not in grouped:
+            grouped[key] = []
+            keys.append(key)
+        grouped[key].append(order)
+
+    pages: list[VendorPage] = []
+    for key in keys:
+        vendor_orders = grouped[key]
+        first = vendor_orders[0]
+        chunks = _paginate_vendor_orders(vendor_orders)
+        for page_no, chunk in enumerate(chunks, 1):
+            pages.append(
+                VendorPage(
+                    vendor=key,
+                    tel=first.tel,
+                    fax=first.fax,
+                    page_no=page_no,
+                    total_pages=len(chunks),
+                    orders=chunk,
+                )
+            )
+    return pages
+
+
+def _draw_rects(c: canvas.Canvas, orders: list[OrderRow]) -> list[float]:
     c.setLineWidth(0.4)
+    row_heights = [_detail_row_height(order) for order in orders]
+    detail_body_h = max(45.44, sum(row_heights))
+    detail_bottom = DETAIL_TOP - DETAIL_HEADER_H - detail_body_h
     rects = [
-        (21.76, 365.12, 801.0, 45.44),
         (21.76, 504.24, 801.0, 24.0),
         (21.76, 430.04, 801.0, 74.23),
         (21.76, 410.56, 801.0, 19.52),
@@ -255,18 +350,24 @@ def _draw_rects(c: canvas.Canvas) -> None:
         (240.76, 410.52, 75.76, 19.52),
         (678.76, 410.52, 75.76, 19.52),
         (270.0, 430.0, 293.24, 74.23),
+        (21.76, detail_bottom, 801.0, detail_body_h),
     ]
     for rect in rects:
         c.rect(*rect, stroke=1, fill=0)
+    y = DETAIL_TOP - DETAIL_HEADER_H
+    for row_height in row_heights[:-1]:
+        y -= row_height
+        c.line(21.76, y, 822.76, y)
     for x, y1, y2 in [
-        (63.04, 410.2, 365.88),
-        (168.04, 410.2, 365.88),
-        (240.68, 409.8, 365.48),
-        (316.48, 409.8, 365.48),
-        (678.76, 409.8, 365.48),
-        (754.48, 410.16, 365.84),
+        (63.04, DETAIL_TOP, detail_bottom),
+        (168.04, DETAIL_TOP, detail_bottom),
+        (240.68, DETAIL_TOP, detail_bottom),
+        (316.48, DETAIL_TOP, detail_bottom),
+        (678.76, DETAIL_TOP, detail_bottom),
+        (754.48, DETAIL_TOP, detail_bottom),
     ]:
         c.line(x, y1, x, y2)
+    return row_heights
 
 
 def _draw_static(c: canvas.Canvas, page_no: int, total_pages: int) -> None:
@@ -284,7 +385,8 @@ def _draw_static(c: canvas.Canvas, page_no: int, total_pages: int) -> None:
     c.setFont(FONT, 12)
     _draw_string(c, 30.8, 512.7, "廠商名稱")
     _draw_string(c, 389.3, 512.7, "FAX：")
-    _draw_string(c, 605.8, 512.7, "mail訂貨日期")
+    c.rect(605.8, 511.2, 7.0, 7.0, stroke=1, fill=0)
+    _draw_string(c, 616.0, 512.7, "mail訂貨日期")
 
     c.setFont(FONT, 10)
     _draw_string(c, 30.8, 488.6, "發票抬頭：義大醫療財團法人義大醫院")
@@ -313,43 +415,51 @@ def _draw_static(c: canvas.Canvas, page_no: int, total_pages: int) -> None:
     _draw_string(c, 766.0, 417.1, "訂購量")
 
 
-def _draw_order(c: canvas.Canvas, order: OrderRow, order_date: str) -> None:
+def _draw_vendor_page(c: canvas.Canvas, page: VendorPage, order_date: str, row_heights: list[float]) -> None:
     c.setFont(FONT, 12)
-    _draw_string(c, 88.6, 513.4, order.vendor)
-    _draw_string(c, 191.0, 512.7, f"TEL：{order.tel}")
-    _draw_string(c, 423.0, 512.7, order.fax)
+    _draw_fit_string(c, 88.6, 513.4, page.vendor, 98.0, 12)
+    c.setFont(FONT, 12)
+    _draw_fit_string(c, 191.0, 512.7, f"TEL：{page.tel}", 190.0, 12)
+    c.setFont(FONT, 12)
+    _draw_fit_string(c, 423.0, 512.7, page.fax, 136.0, 12)
+    c.setFont(FONT, 12)
     _draw_string(c, 747.6, 511.9, order_date)
 
-    _draw_string(c, 40.2, 398.7, "1")
-    _draw_string(c, 73.0, 398.7, order.order_no)
-    _draw_string(c, 181.5, 398.7, order.item_no)
-    _draw_string(c, 259.5, 398.7, order.code)
-    _draw_string(c, 691.0, 398.7, order.unit)
-    _draw_right(c, 812.0, 398.7, order.quantity)
+    y_top = DETAIL_TOP - DETAIL_HEADER_H
+    for idx, (order, row_height) in enumerate(zip(page.orders, row_heights), 1):
+        y = y_top - 14.0
+        c.setFont(FONT, 9)
+        _draw_center(c, 42.4, y, str(idx))
+        _draw_string(c, 68.0, y, order.order_no)
+        _draw_string(c, 181.5, y, order.item_no)
+        _draw_string(c, 259.5, y, order.code)
+        _draw_string(c, 691.0, y, order.unit)
+        _draw_right(c, 812.0, y, order.quantity)
 
-    for idx, line in enumerate(_fit_text(order.name, 345, FONT, 12)):
-        _draw_string(c, 321.4, 398.7 - idx * 14.4, line)
+        for line_idx, line in enumerate(_fit_detail_name(order.name)):
+            _draw_string(c, 321.4, y - line_idx * DETAIL_LINE_H, line)
+        y_top -= row_height
 
 
 def build_pdf(orders: list[OrderRow], output, order_date: str) -> None:
     if not orders:
         raise ValueError("Excel 沒有可輸出的訂單資料。")
     register_fonts()
+    pages = build_vendor_pages(orders)
     c = canvas.Canvas(output, pagesize=(PAGE_W, PAGE_H))
-    total = len(orders)
-    for page_no, order in enumerate(orders, 1):
-        _draw_rects(c)
-        _draw_static(c, page_no, total)
-        _draw_order(c, order, order_date)
+    for page in pages:
+        row_heights = _draw_rects(c, page.orders)
+        _draw_static(c, page.page_no, page.total_pages)
+        _draw_vendor_page(c, page, order_date, row_heights)
         c.showPage()
     c.save()
 
 
-def build_pdf_from_excel(excel_source, output, filename: str = "orders.xlsx", order_date: str | None = None) -> tuple[int, str]:
+def build_pdf_from_excel(excel_source, output, filename: str = "orders.xlsx", order_date: str | None = None) -> tuple[int, str, int]:
     orders = read_orders(excel_source)
     final_date = order_date or infer_order_date(filename, orders)
     build_pdf(orders, str(output) if isinstance(output, Path) else output, final_date)
-    return len(orders), final_date
+    return len(orders), final_date, len({_vendor_key(order) for order in orders})
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -374,12 +484,12 @@ async def generate_pdf(excel: UploadFile = File(...), order_date: str | None = F
 
     try:
         output = io.BytesIO()
-        count, final_date = build_pdf_from_excel(io.BytesIO(content), output, filename=filename, order_date=order_date or None)
+        count, final_date, vendor_count = build_pdf_from_excel(io.BytesIO(content), output, filename=filename, order_date=order_date or None)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     output.seek(0)
-    safe_name = f"{Path(filename).stem}_訂購單_{final_date}_{count}筆.pdf"
+    safe_name = f"{Path(filename).stem}_訂購單_{final_date}_{vendor_count}廠商_{count}筆.pdf"
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_name)}"}
     return StreamingResponse(output, media_type="application/pdf", headers=headers)
 
@@ -393,8 +503,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     if args.input:
-        count, final_date = build_pdf_from_excel(args.input, args.output, filename=args.input.name, order_date=args.date)
-        print(f"wrote {args.output} ({count} pages, date {final_date})")
+        count, final_date, vendor_count = build_pdf_from_excel(args.input, args.output, filename=args.input.name, order_date=args.date)
+        print(f"wrote {args.output} ({vendor_count} vendors, {count} rows, date {final_date})")
     else:
         import uvicorn
 
