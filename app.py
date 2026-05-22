@@ -56,11 +56,10 @@ _APP_DIR = Path(__file__).resolve().parent
 FONT_CANDIDATES = [
     os.getenv("ORDERHELPER_FONT_PATH", ""),
     # Bundled in the deployment zip. Bold first so all text renders bold.
-    str(_APP_DIR / "fonts" / "NotoSansTC-Bold.otf"),
     str(_APP_DIR / "fonts" / "NotoSansTC-Bold.ttf"),
     str(_APP_DIR / "fonts" / "NotoSansTC-VariableFont_wght.ttf"),
     str(_APP_DIR / "fonts" / "NotoSansTC-Regular.otf"),
-    str(_APP_DIR / "fonts" / "NotoSansCJK-Regular.ttc"),
+    str(_APP_DIR / "fonts" / "NotoSansTC-Regular.ttf"),
     # Windows local dev.
     r"C:\Windows\Fonts\NotoSansTC-VF.ttf",
     r"C:\Windows\Fonts\NotoSansCJK-Regular.ttc",

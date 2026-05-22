@@ -4,24 +4,31 @@ Web tool for uploading an Excel order sheet and generating a single PDF purchase
 
 ## Current Status
 
-This project is a working prototype that has been converted to a deployable FastAPI app.
+This project is a working FastAPI prototype deployed to Azure App Service.
 
 Completed:
 
-- GitHub repository initialized and pushed.
-- App converted from `http.server` to FastAPI.
 - Upload form available at `/`.
 - PDF generation endpoint available at `/generate`.
 - Health check endpoint available at `/health`.
 - CLI generation path preserved for local testing.
-- Runtime font strategy changed from Windows `MingLiU` to deployable `Noto Sans TC/CJK`.
-- Azure deployment configured for **App Service (Linux) with native Python 3.12 runtime** (no Docker). See `DEPLOY.md`.
+- Runtime font strategy changed from Windows `MingLiU` to bundled Noto Sans TC fonts.
+- Azure deployment configured for App Service on Linux with Python 3.12 and GitHub Actions OIDC.
 - Excel/PDF/DOCX samples and generated files are ignored by git.
 
-Latest known pushed commit:
+Current Azure target:
 
 ```text
-bdf15d0 convert app to fastapi
+Resource group: orderhelper
+Web App:        app-orderhelper
+Runtime:        PYTHON|3.12
+URL:            https://app-orderhelper.azurewebsites.net
+```
+
+Latest known pushed commit before this documentation update:
+
+```text
+1e9a915 auto-instance variable font to bold at startup
 ```
 
 The current workflow:
@@ -52,11 +59,11 @@ python app.py --input .\orders.xlsx --output .\orders.pdf --date 2026-04-30
 
 ## Azure Deployment
 
-Target: **Azure App Service (Linux) with native Python 3.12 runtime**. No container.
+Target: Azure App Service on Linux with native Python 3.12. No Docker image is used.
 
-CI/CD: GitHub Actions zip deploy via OIDC (no long-lived secrets).
+CI/CD: GitHub Actions zip deploy via OIDC. Azure remote build is enabled with `SCM_DO_BUILD_DURING_DEPLOYMENT=True`, so App Service runs Oryx and installs `requirements.txt` during deployment.
 
-See [`DEPLOY.md`](./DEPLOY.md) for full provisioning, deployment, and operations.
+See [`DEPLOY.md`](./DEPLOY.md) for provisioning, deployment, and operations.
 
 Endpoints:
 
@@ -64,9 +71,20 @@ Endpoints:
 - `/generate` PDF generation endpoint
 - `/health` health check endpoint
 
+## Font Files
+
+The repository includes Noto Sans TC fonts under `fonts/` so Azure does not need OS-level font installation:
+
+- `fonts/NotoSansTC-Bold.ttf`
+- `fonts/NotoSansTC-Regular.otf`
+- `fonts/NotoSansTC-Regular.ttf`
+- `fonts/NotoSansTC-VariableFont_wght.ttf`
+
+The app tries bundled bold and variable fonts first, then regular fonts. A custom font path can still be supplied with `ORDERHELPER_FONT_PATH`.
+
 ## Validation Performed
 
-Validated locally on Windows:
+Validated during development:
 
 - `python -m compileall app.py`
 - CLI generation:
@@ -93,14 +111,12 @@ python app.py --host 127.0.0.1 --port 8000
 
 - PDF layout still needs visual fine-tuning against `1031訂單PDF.PDF`.
 - Current output intentionally uses fixed PDF coordinates, one Excel row per PDF page.
-- Noto Sans TC/CJK changes the visual metrics compared with the original PDF font, so x/y positions and column widths may need adjustment.
+- Noto Sans TC changes the visual metrics compared with the original PDF font, so x/y positions and column widths may need adjustment.
 - Authentication is not implemented in application code. Prefer Azure App Service Easy Auth for external deployment.
 - Upload limit defaults to 15 MB and can be changed with `MAX_UPLOAD_BYTES`.
-- A custom font path can be supplied with `ORDERHELPER_FONT_PATH`.
 
 ## Notes
 
 - Uploaded Excel files and generated PDFs are intentionally ignored by git.
 - The PDF layout is generated with fixed coordinates and is expected to be refined against the hospital's reference PDF.
-- The app uses Noto Sans TC/CJK for Traditional Chinese PDF output. Set `ORDERHELPER_FONT_PATH` if the runtime needs an explicit font file path.
-- Local untracked `prompt.txt` was intentionally not committed.
+- Local `prompt.txt` is intentionally ignored.

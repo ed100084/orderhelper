@@ -1,87 +1,125 @@
 # Order Helper - Azure 部署
 
-Azure App Service (Linux, Python 3.12)。指令在 Windows PowerShell 跑。
+Azure App Service Linux，Python 3.12。以下指令以 Windows PowerShell 為主。
 
-## 1. 準備字型（一次性）
+## 目前 Azure 目標
 
-App Service Linux 不能 `apt install`，字型必須隨 repo 一起上傳。
-
-從 https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansTC-Regular.otf 下載，放到 `D:\workspace\orderhelper\fonts\NotoSansTC-Regular.otf`。
-
-或 PowerShell：
-
-```powershell
-cd D:\workspace\orderhelper
-New-Item -ItemType Directory -Force fonts | Out-Null
-Invoke-WebRequest `
-  -Uri "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansTC-Regular.otf" `
-  -OutFile "fonts\NotoSansTC-Regular.otf"
+```text
+Resource group: orderhelper
+App Service plan: asp-orderhelper-prod
+Web App: app-orderhelper
+Runtime: PYTHON|3.12
+Region: East Asia
+URL: https://app-orderhelper.azurewebsites.net
 ```
 
-## 2. 部署
+目前 App Service 已連到 GitHub Actions：
 
-```powershell
-az login
-cd D:\workspace\orderhelper
-
-# 第一次：建立資源 + 上傳。之後改 code 重跑同一行就會重新部署。
-az webapp up `
-  --name app-orderhelper-prod `
-  --resource-group rg-orderhelper-prod `
-  --plan asp-orderhelper-prod `
-  --runtime "PYTHON:3.12" `
-  --location eastasia `
-  --sku B1
+```text
+Repository: https://github.com/ed100084/orderhelper
+Branch: main
+Workflow: .github/workflows/main_app-orderhelper.yml
 ```
 
-> Web App 名稱要全 Azure 唯一，撞名就改 `app-orderhelper-1234`。
+## 字型檔
 
-設定啟動指令、字型路徑、HTTPS only：
+App Service Linux 不要依賴 `apt install` 安裝 PDF 字型。專案把 Noto Sans TC 字型放在 `fonts/`，部署時會跟著應用程式一起上傳：
+
+```text
+fonts/NotoSansTC-Bold.ttf
+fonts/NotoSansTC-Regular.otf
+fonts/NotoSansTC-Regular.ttf
+fonts/NotoSansTC-VariableFont_wght.ttf
+```
+
+程式會先檢查 `ORDERHELPER_FONT_PATH`，再依序使用 repo 內的字型檔，最後才檢查本機 OS fallback 路徑。
+
+## 必要 App Settings
+
+```powershell
+az webapp config appsettings set `
+  --resource-group orderhelper `
+  --name app-orderhelper `
+  --settings `
+    SCM_DO_BUILD_DURING_DEPLOYMENT=True `
+    MAX_UPLOAD_BYTES=15728640
+```
+
+`SCM_DO_BUILD_DURING_DEPLOYMENT=True` 很重要。GitHub Actions artifact 會排除本機 `antenv/`，所以 Azure 必須在部署時跑 Oryx，依照 `requirements.txt` 建立 runtime 套件環境。
+
+如果要明確指定字型，可以加：
+
+```powershell
+az webapp config appsettings set `
+  --resource-group orderhelper `
+  --name app-orderhelper `
+  --settings ORDERHELPER_FONT_PATH=/home/site/wwwroot/fonts/NotoSansTC-Bold.ttf
+```
+
+## 啟動指令
 
 ```powershell
 az webapp config set `
-  --resource-group rg-orderhelper-prod `
-  --name app-orderhelper-prod `
+  --resource-group orderhelper `
+  --name app-orderhelper `
   --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker --timeout 120 -b 0.0.0.0:8000 app:app"
-
-az webapp config appsettings set `
-  --resource-group rg-orderhelper-prod `
-  --name app-orderhelper-prod `
-  --settings `
-    ORDERHELPER_FONT_PATH=/home/site/wwwroot/fonts/NotoSansTC-Regular.otf `
-    MAX_UPLOAD_BYTES=15728640
-
-az webapp update `
-  --resource-group rg-orderhelper-prod `
-  --name app-orderhelper-prod `
-  --https-only true
 ```
 
-確認：
+App 監聽 `8000`，符合目前 App Service Python image 預設值。
+
+## 部署
+
+日常部署走 GitHub Actions：
 
 ```powershell
-curl https://app-orderhelper-prod.azurewebsites.net/health
+git push origin main
 ```
 
-## 3. 啟用認證（上線前必做）
+GitHub Actions 還在部署時，不要同時跑 `az webapp up`、Portal Deployment Center 操作、改 App Settings、restart、或手動 zip deploy。這些管理操作可能讓 SCM container 重啟，造成部署只完成一半，最後 runtime 找不到 `uvicorn` 或其他 Python 套件。
 
-Portal → 你的 Web App → **Authentication** → Add identity provider → Microsoft → Single tenant → Require authentication → Save。
+如果要手動觸發 Azure 目前 GitHub source connection 重新同步：
 
-之後可在 Portal 限制只允許特定 security group 存取。
+```powershell
+az webapp deployment source sync `
+  --resource-group orderhelper `
+  --name app-orderhelper
+```
+
+## 驗證
+
+```powershell
+Invoke-RestMethod -Uri https://app-orderhelper.azurewebsites.net/health
+```
+
+預期回應：
+
+```json
+{"status":"ok"}
+```
+
+如果網站啟動失敗，log 出現 `ModuleNotFoundError: No module named 'uvicorn'`，代表該次部署沒有完成 Oryx dependency build。先等目前部署完全結束，再重新部署一次。
 
 ## 日常維護
 
 | 動作 | 指令 |
 |---|---|
-| 改 code 重新部署 | `az webapp up`（同上那行） |
-| 看 log | `az webapp log tail -g rg-orderhelper-prod -n app-orderhelper-prod` |
-| 重啟 | `az webapp restart -g rg-orderhelper-prod -n app-orderhelper-prod` |
-| 上 SSH 進去看 | `az webapp ssh -g rg-orderhelper-prod -n app-orderhelper-prod` |
-| 砍掉重練 | `az group delete -n rg-orderhelper-prod --yes` |
+| 查看 app config | `az webapp config show -g orderhelper -n app-orderhelper` |
+| 查看 app settings | `az webapp config appsettings list -g orderhelper -n app-orderhelper` |
+| 看 log | `az webapp log tail -g orderhelper -n app-orderhelper` |
+| 重啟 | `az webapp restart -g orderhelper -n app-orderhelper` |
+| SSH | `az webapp ssh -g orderhelper -n app-orderhelper` |
+| 健康檢查 | `Invoke-RestMethod -Uri https://app-orderhelper.azurewebsites.net/health` |
 
-## 之後要時再加
+## 認證
 
-- **GitHub Actions 自動部署**：Portal → Deployment Center → GitHub → 一鍵生成 workflow
-- **staging slot 藍綠部署**：SKU 升 P1v3 後 `az webapp deployment slot create`
-- **Private Endpoint / VNet 整合**：醫院內網才能存取
-- **Log Analytics / Application Insights**：合規與監控
+應用程式本身尚未實作登入。對外使用前，建議用 Azure App Service Authentication：
+
+Portal -> Web App -> Authentication -> Add identity provider -> Microsoft -> Single tenant -> Require authentication -> Save.
+
+之後可限制特定使用者或 security group 存取。
+
+## 後續可加
+
+- 加 staging slot，再做 production swap。
+- 加 Application Insights 或 Log Analytics。
+- 在 GitHub Actions 增加部署後 `/health` 檢查。
