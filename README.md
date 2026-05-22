@@ -115,6 +115,35 @@ python app.py --host 127.0.0.1 --port 8000
 - Authentication is not implemented in application code. Prefer Azure App Service Easy Auth for external deployment.
 - Upload limit defaults to 15 MB and can be changed with `MAX_UPLOAD_BYTES`.
 
+## Roadmap
+
+Recommended next improvements, in priority order:
+
+1. Deployment stability
+
+   - Add GitHub Actions `concurrency` so overlapping deployments do not interrupt each other.
+   - Add a post-deployment `/health` check to the workflow.
+   - Pin dependency versions in `requirements.txt` so Azure builds are repeatable.
+   - Update the workflow if GitHub's Node.js 20 actions deprecation warning starts requiring changes.
+
+2. Error handling
+
+   - Return clear 400 responses for user input problems such as missing Excel columns, missing order sheets, empty order data, or invalid files.
+   - Add a deeper readiness endpoint that checks bundled fonts and basic PDF generation.
+   - Improve the upload page so users see friendly error messages instead of raw JSON errors.
+
+3. PDF quality
+
+   - Compare output against `1031訂單PDF.PDF` and tune fixed coordinates, spacing, and column widths.
+   - Add a sample Excel regression test that verifies generated PDF page count and non-empty output.
+   - Handle long `品名規格` values more deliberately instead of silently limiting to five lines.
+
+4. Operations and access control
+
+   - Enable Azure App Service Easy Auth before external use.
+   - Add limits for Excel row count, generated page count, and processing time to protect the App Service instance.
+   - Include app version or commit SHA in `/health` so the deployed version is easy to confirm.
+
 ## Notes
 
 - Uploaded Excel files and generated PDFs are intentionally ignored by git.
