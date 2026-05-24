@@ -1,153 +1,206 @@
-# Order Helper
+# OrderHelper
 
-Web tool for uploading an Excel order sheet and generating a single PDF purchase order file.
+義大醫院藥品訂購單 PDF 產生器 — 單一 `.exe`，免安裝，Windows 10/11 x64。
 
-## Current Status
+從 Excel 訂購檔批次讀取訂單，依廠商分頁產生 A4 橫向 PDF，可直接列印或傳真。
 
-This project is a working FastAPI prototype deployed to Azure App Service.
+---
 
-Completed:
+## 功能清單
 
-- Upload form available at `/`.
-- PDF generation endpoint available at `/generate`.
-- Health check endpoint available at `/health`.
-- CLI generation path preserved for local testing.
-- Runtime font strategy changed from Windows `MingLiU` to bundled Noto Sans TC fonts.
-- Azure deployment configured for App Service on Linux with Python 3.12 and GitHub Actions OIDC.
-- Excel/PDF/DOCX samples and generated files are ignored by git.
+| 功能 | 說明 |
+|------|------|
+| 讀取 Excel | 自動識別欄位標題（中英文別名皆可）、合併儲存格解析、支援多工作表 |
+| 資料驗證 | 可設定必填、正則格式、最大長度規則；驗證失敗時列出訂購單號與錯誤原因 |
+| PDF 產生 | A4 橫向，依廠商分頁，自動分頁分割過長訂單 |
+| 日期推算 | 從檔名或訂購單號自動辨識民國日期（YYYMMDD），失敗時提示並設為今天 |
+| 拖放操作 | 直接拖放 `.xlsx` 至視窗，無需按選擇按鈕 |
+| PDF 預覽 | 內建 WebView2 預覽，可直接列印或另存 |
+| 多工作表 | 讀取時彈出工作表選擇清單 |
+| 範例 Excel | 一鍵匯出填寫範本 |
+| 驗證設定 | 可新增/刪除/停用規則，JSON 格式儲存於 `%APPDATA%\OrderHelper\` |
+| 醫院資料 | 標題、發票、交貨地址、備註等均可在 UI 編輯 |
+| 一般設定 | 自動儲存至 Excel 同目錄、預設儲存目錄 |
+| 操作記錄 | 所有動作寫入每日 `.jsonl`，支援日期過濾與 CSV 匯出 |
+| CLI 靜默模式 | 無 GUI，讀 Excel → 驗證 → 產 PDF，exit code 0/1 |
+| 版本資訊 | 工具列「關於」對話框顯示版本號與建置日期 |
 
-Current Azure target:
+---
 
-```text
-Resource group: orderhelper
-Web App:        app-orderhelper
-Runtime:        PYTHON|3.12
-URL:            https://app-orderhelper.azurewebsites.net
-```
+## 快速開始
 
-Latest known pushed commit before this documentation update:
+1. 從 `bin/Publish/` 取得 `OrderHelper.exe`（或自行 publish，見下方）。
+2. 雙擊執行，將 `.xlsx` 訂購檔拖放至視窗，或按「選擇檔案…」。
+3. 點「產生 PDF」，完成後自動預覽。
 
-```text
-1e9a915 auto-instance variable font to bold at startup
-```
+---
 
-The current workflow:
+## CLI 靜默模式
 
-1. Upload an `.xlsx` file.
-2. Read the order sheet in Excel row order.
-3. Group rows by vendor name while preserving the first vendor appearance order.
-4. Generate one or more PDF pages per vendor, depending on how many detail rows fit.
-5. Return one combined PDF.
+有命令列參數時自動進入 CLI 模式，不開 GUI 視窗。
 
-## Local Run
-
-```powershell
-python -m pip install -r requirements.txt
-python app.py --port 8000
-```
-
-Open:
-
-```text
-http://127.0.0.1:8000/
-```
-
-## CLI Test
+### 基本用法
 
 ```powershell
-python app.py --input .\orders.xlsx --output .\orders.pdf --date 2026-04-30
+# 指定輸出路徑
+OrderHelper.exe --input orders.xlsx --output orders.pdf
+
+# 指定輸出目錄（自動命名為 orders_訂購單.pdf）
+OrderHelper.exe --input orders.xlsx --output-dir D:\output
+
+# 忽略驗證警告強制產出
+OrderHelper.exe --input orders.xlsx --output orders.pdf --force
+
+# 使用自訂醫院設定
+OrderHelper.exe --input orders.xlsx --output orders.pdf --config custom_hospital.json
+
+# 顯示說明
+OrderHelper.exe --help
 ```
 
-## Azure Deployment
+### 選項說明
 
-Target: Azure App Service on Linux with native Python 3.12. No Docker image is used.
+| 選項 | 縮寫 | 說明 |
+|------|------|------|
+| `--input <路徑>` | `-i` | Excel 訂購檔路徑（必填） |
+| `--output <路徑>` | `-o` | 輸出 PDF 路徑（與 `--output-dir` 擇一） |
+| `--output-dir <目錄>` | | 輸出目錄，自動命名 |
+| `--config <路徑>` | | 自訂 `hospital_settings.json` 路徑 |
+| `--force` | `-f` | 忽略驗證警告繼續產出 |
+| `--help` | `-h` | 顯示說明 |
 
-CI/CD: GitHub Actions zip deploy via OIDC. Azure remote build is enabled with `SCM_DO_BUILD_DURING_DEPLOYMENT=True`, so App Service runs Oryx and installs `requirements.txt` during deployment.
+### 退出碼
 
-See [`DEPLOY.md`](./DEPLOY.md) for provisioning, deployment, and operations.
+| 退出碼 | 意義 |
+|--------|------|
+| `0` | 成功 |
+| `1` | 失敗（讀檔失敗、驗證不通過、PDF 產生失敗等） |
 
-Endpoints:
-
-- `/` upload form
-- `/generate` PDF generation endpoint
-- `/health` health check endpoint
-
-## Font Files
-
-The repository includes Noto Sans TC fonts under `fonts/` so Azure does not need OS-level font installation:
-
-- `fonts/NotoSansTC-Bold.ttf`
-- `fonts/NotoSansTC-Regular.otf`
-- `fonts/NotoSansTC-Regular.ttf`
-- `fonts/NotoSansTC-VariableFont_wght.ttf`
-
-The app tries bundled bold and variable fonts first, then regular fonts. A custom font path can still be supplied with `ORDERHELPER_FONT_PATH`.
-
-## Validation Performed
-
-Validated during development:
-
-- `python -m compileall app.py`
-- CLI generation:
+### 在 PowerShell 中呼叫
 
 ```powershell
-python app.py --input .\mail訂購--1150430.xlsx --output .\sample_output.pdf --date 2026-04-30
+$result = & ".\OrderHelper.exe" --input orders.xlsx --output orders.pdf
+if ($LASTEXITCODE -ne 0) { Write-Error "PDF 產生失敗" }
 ```
 
-- FastAPI server:
+> **注意：** CLI 模式輸出可能在 PowerShell 提示符之後才顯示，這是 Windows GUI 子系統的限制，不影響功能。
 
-```powershell
-python app.py --host 127.0.0.1 --port 8000
-```
+---
 
-- `/health` returned HTTP 200 with:
+## 設定檔格式
+
+設定檔存放於 `%APPDATA%\OrderHelper\`，可直接編輯或透過 GUI 修改。
+
+### `hospital_settings.json`（CLI `--config` 接受相同格式）
 
 ```json
-{"status":"ok"}
+{
+  "HospitalName": "義大醫院",
+  "FormTitle": "藥品訂購單",
+  "InvoiceHeader": "財團法人義大醫療財團法人義大醫院",
+  "InvoiceAddress": "高雄市燕巢區角宿里義大路1號",
+  "TaxId": "12345678",
+  "MedicalCode": "1234567890",
+  "DrugLicenseNo": "管藥字第XXXX號",
+  "DeliveryAddress": "高雄市燕巢區角宿里義大路1號 藥劑部",
+  "DeliveryNote": "收貨時間：週一至週五 08:00-17:00",
+  "ContactPhone": "07-615-0011",
+  "ContactFax": "07-615-0022",
+  "Note1": "請於訂單日期後 3 個工作天內交貨",
+  "Note2": "",
+  "Note3": "",
+  "Note4": ""
+}
 ```
 
-- `/generate` accepted the sample Excel upload and returned HTTP 200.
-- CLI generation from `mail訂購--1150430.xlsx` produced 9 vendors, 96 rows, and a 13-page grouped PDF.
+---
 
-## Known Follow-Ups
+## Build / Publish
 
-- PDF layout still needs visual fine-tuning against `1031訂單PDF.PDF`.
-- Current output intentionally uses fixed PDF coordinates, grouping multiple Excel rows into vendor order pages.
-- Noto Sans TC changes the visual metrics compared with the original PDF font, so x/y positions and column widths may need adjustment.
-- Authentication is not implemented in application code. Prefer Azure App Service Easy Auth for external deployment.
-- Upload limit defaults to 15 MB and can be changed with `MAX_UPLOAD_BYTES`.
+### 前置需求
 
-## Roadmap
+- .NET 8 SDK（若 PATH 未包含，可用 `dotnet-install.ps1` 安裝至 `%LOCALAPPDATA%\dotnet-sdk8`）
 
-Recommended next improvements, in priority order:
+### 建置（Debug）
 
-1. Deployment stability
+```powershell
+$env:DOTNET_ROOT="$env:LOCALAPPDATA\dotnet-sdk8"
+& "$env:DOTNET_ROOT\dotnet.exe" build OrderHelperWinForms/OrderHelperWinForms.csproj
+```
 
-   - Add GitHub Actions `concurrency` so overlapping deployments do not interrupt each other.
-   - Add a post-deployment `/health` check to the workflow.
-   - Pin dependency versions in `requirements.txt` so Azure builds are repeatable.
-   - Update the workflow if GitHub's Node.js 20 actions deprecation warning starts requiring changes.
+### 發行（單一 .exe，win-x64，self-contained）
 
-2. Error handling
+```powershell
+$env:DOTNET_ROOT="$env:LOCALAPPDATA\dotnet-sdk8"
+& "$env:DOTNET_ROOT\dotnet.exe" publish OrderHelperWinForms/OrderHelperWinForms.csproj /p:PublishProfile=SingleFile
+```
 
-   - Return clear 400 responses for user input problems such as missing Excel columns, missing order sheets, empty order data, or invalid files.
-   - Add a deeper readiness endpoint that checks bundled fonts and basic PDF generation.
-   - Improve the upload page so users see friendly error messages instead of raw JSON errors.
+輸出位置：`OrderHelperWinForms\bin\Publish\OrderHelper.exe`
 
-3. PDF quality
+發行設定檔位於 `OrderHelperWinForms\Properties\PublishProfiles\SingleFile.pubxml`。
 
-   - Compare output against `1031訂單PDF.PDF` and tune fixed coordinates, spacing, and column widths.
-   - Add a sample Excel regression test that verifies generated PDF page count and non-empty output.
-   - Handle long `品名規格` values more deliberately instead of silently limiting to five lines.
+---
 
-4. Operations and access control
+## 系統需求
 
-   - Enable Azure App Service Easy Auth before external use.
-   - Add limits for Excel row count, generated page count, and processing time to protect the App Service instance.
-   - Include app version or commit SHA in `/health` so the deployed version is easy to confirm.
+| 項目 | 需求 |
+|------|------|
+| 作業系統 | Windows 10 / 11 x64 |
+| 字型 | 微軟正黑體（`C:\Windows\Fonts\msjhbd.ttc`），Windows 內建 |
+| PDF 預覽 | Microsoft Edge WebView2 Runtime（Windows 11 內建；Windows 10 請至 [Microsoft](https://go.microsoft.com/fwlink/p/?LinkId=2124703) 下載） |
+| 執行環境 | 單一 `.exe`，self-contained，不需安裝 .NET Runtime |
 
-## Notes
+---
 
-- Uploaded Excel files and generated PDFs are intentionally ignored by git.
-- The PDF layout is generated with fixed coordinates and is expected to be refined against the hospital's reference PDF.
-- Local `prompt.txt` is intentionally ignored.
+## 專案架構
+
+```
+OrderHelperWinForms/
+├── Forms/
+│   ├── MainForm.cs           主視窗（TabControl × 3）
+│   ├── AboutForm.cs          關於對話框
+│   ├── PreviewForm.cs        WebView2 PDF 預覽
+│   ├── LogViewerForm.cs      操作記錄檢視
+│   ├── SheetSelectForm.cs    多工作表選擇
+│   └── ValidationConfirmForm.cs  驗證警告確認
+├── Models/
+│   ├── OrderRow.cs           Excel 資料列
+│   ├── VendorPage.cs         PDF 廠商分頁
+│   ├── ValidationRule.cs     驗證規則 + ValidationError
+│   ├── HospitalSettings.cs   醫院設定
+│   └── GeneralSettings.cs    一般設定（目錄、儲存選項）
+├── Services/
+│   ├── ExcelReader.cs        Excel 讀取（ClosedXML）
+│   ├── ExcelExporter.cs      範例 Excel 匯出
+│   ├── PdfGenerator.cs       PDF 產生（iText7）
+│   ├── ValidationService.cs  資料驗證
+│   ├── TextHelper.cs         文字正規化、日期推算
+│   ├── AppSettings.cs        JSON 設定檔讀寫
+│   ├── ActivityLogger.cs     操作記錄（JSONL）
+│   └── CliRunner.cs          CLI 靜默模式
+└── Program.cs                進入點（CLI / GUI 分流）
+```
+
+---
+
+## Changelog
+
+### v1.0.0（2026-05-24）
+
+**初始發行版本**
+
+- 從 Python FastAPI 原型移植為 .NET 8 WinForms 單一 `.exe`
+- Excel 讀取：自動識別欄位標題（中英文別名）、合併儲存格解析
+- PDF 產生：A4 橫向，iText7，座標完全對應原 reportlab 輸出
+- 多廠商分頁、自動換頁、長品名多行排版
+- 資料驗證：必填、正則格式、最大長度規則，GUI 可編輯
+- 醫院資料全欄可設定（發票抬頭、交貨地址、備註等）
+- 一般設定：AutoSaveSameDir、DefaultPdfDirectory
+- WebView2 PDF 預覽（含列印、另存）
+- 操作記錄（每日 JSONL），日期過濾，CSV 匯出
+- 多工作表選擇
+- 拖放 `.xlsx` 至視窗
+- CLI 靜默模式（`--input / --output / --output-dir / --config / --force`）
+- 關於對話框顯示版本號與建置日期
+- 驗證確認對話框三按鈕（繼續 / 停止 / 開啟 Excel）
+- 髒旗標追蹤（關閉前提示儲存）

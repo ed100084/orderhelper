@@ -52,7 +52,9 @@ public class MainForm : Form
 
     public MainForm()
     {
-        Text          = "義大醫院 藥品訂購單 PDF 產生器";
+        var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        string verSuffix = ver != null ? $" v{ver.Major}.{ver.Minor}.{ver.Build}" : "";
+        Text          = "義大醫院 藥品訂購單 PDF 產生器" + verSuffix;
         Size          = new Size(740, 680);
         MinimumSize   = new Size(660, 600);
         StartPosition = FormStartPosition.CenterScreen;
@@ -94,11 +96,16 @@ public class MainForm : Form
     // ============================================================
     MenuStrip BuildMenu()
     {
-        var menu    = new MenuStrip();
-        var miTools = new ToolStripMenuItem("工具(&T)");
-        var miLog   = new ToolStripMenuItem("檢視操作記錄…");
-        miLog.Click += (_, _) => new LogViewerForm().ShowDialog(this);
+        var menu     = new MenuStrip();
+        var miTools  = new ToolStripMenuItem("工具(&T)");
+        var miLog    = new ToolStripMenuItem("檢視操作記錄…");
+        var miSep    = new ToolStripSeparator();
+        var miAbout  = new ToolStripMenuItem("關於 OrderHelper…");
+        miLog.Click   += (_, _) => new LogViewerForm().ShowDialog(this);
+        miAbout.Click += (_, _) => new AboutForm().ShowDialog(this);
         miTools.DropDownItems.Add(miLog);
+        miTools.DropDownItems.Add(miSep);
+        miTools.DropDownItems.Add(miAbout);
         menu.Items.Add(miTools);
         return menu;
     }
