@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>OrderHelper</AssemblyName>
+    <RootNamespace>OrderHelperWinForms</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- iText7: same coordinate system (bottom-left origin) as reportlab -->
+    <PackageReference Include="itext7" Version="7.2.5" />
+    <!-- ClosedXML for Excel reading -->
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+  </ItemGroup>
+
+  <!-- No font embedding: uses Windows system font (微軟正黑體) at runtime -->
+
+</Project>
