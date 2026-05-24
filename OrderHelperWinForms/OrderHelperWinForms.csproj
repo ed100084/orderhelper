@@ -8,13 +8,14 @@
     <RootNamespace>OrderHelperWinForms</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Suppress WindowsBase version conflict from WebView2's bundled WPF assembly -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- iText7: same coordinate system (bottom-left origin) as reportlab -->
     <PackageReference Include="itext7" Version="7.2.5" />
-    <!-- ClosedXML for Excel reading -->
     <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2849.39" />
   </ItemGroup>
 
   <!-- No font embedding: uses Windows system font (微軟正黑體) at runtime -->

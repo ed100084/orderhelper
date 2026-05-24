@@ -60,9 +60,10 @@ public static class PdfGenerator
         Stream pdfOutput,
         string filename = "orders.xlsx",
         string? orderDate = null,
-        HospitalSettings? hospital = null)
+        HospitalSettings? hospital = null,
+        string? sheetName = null)
     {
-        var orders = ExcelReader.ReadOrders(excelSource);
+        var orders = ExcelReader.ReadOrders(excelSource, sheetName);
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
 
