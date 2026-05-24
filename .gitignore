@@ -25,3 +25,7 @@ test_download.pdf
 
 # Local notes
 prompt.txt
+
+# .NET build output
+OrderHelperWinForms/bin/
+OrderHelperWinForms/obj/
