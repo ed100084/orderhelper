@@ -33,13 +33,14 @@ public static class ValidationService
                 {
                     RuleType.Required  => string.IsNullOrWhiteSpace(val),
                     RuleType.Regex     => !string.IsNullOrEmpty(rule.Parameter)
+                                         && !string.IsNullOrWhiteSpace(val)
                                          && !Regex.IsMatch(val, rule.Parameter),
                     RuleType.MaxLength => int.TryParse(rule.Parameter, out int max)
                                          && val.Length > max,
                     _                  => false,
                 };
                 if (fail)
-                    errors.Add(new ValidationError(i, rule.Field, rule.Message));
+                    errors.Add(new ValidationError(i, rows[i].OrderNo, rule.Field, rule.Message));
             }
         }
         return errors;

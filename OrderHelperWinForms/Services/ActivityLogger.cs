@@ -48,7 +48,7 @@ public static class ActivityLogger
         catch { }
     }
 
-    public static List<LogEntry> LoadAll()
+    public static List<LogEntry> LoadAll(DateTime? since = null)
     {
         var entries = new List<LogEntry>();
         if (!Directory.Exists(LogDir)) return entries;
@@ -56,6 +56,14 @@ public static class ActivityLogger
         foreach (var file in Directory.GetFiles(LogDir, "*.jsonl")
                                       .OrderByDescending(f => f))
         {
+            // Skip files older than the requested date (filename is yyyy-MM-dd.jsonl)
+            if (since.HasValue)
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (DateTime.TryParse(name, out var fileDate) && fileDate.Date < since.Value.Date)
+                    continue;
+            }
+
             try
             {
                 foreach (var line in File.ReadAllLines(file))

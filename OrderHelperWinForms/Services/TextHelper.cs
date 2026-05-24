@@ -30,9 +30,9 @@ public static partial class TextHelper
 
     /// <summary>
     /// Infer order date from filename or first order numbers (ROC calendar pattern YYYMMDD).
-    /// Falls back to today's date.
+    /// Returns null if no valid date can be found.
     /// </summary>
-    public static string InferOrderDate(string filename, IEnumerable<OrderRow> orders)
+    public static string? InferOrderDate(string filename, IEnumerable<OrderRow> orders)
     {
         var candidates = new[] { filename }.Concat(orders.Take(5).Select(o => o.OrderNo));
         foreach (var text in candidates)
@@ -42,8 +42,11 @@ public static partial class TextHelper
             int rocYear = int.Parse(m.Groups[1].Value);
             int month   = int.Parse(m.Groups[2].Value);
             int day     = int.Parse(m.Groups[3].Value);
+            if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+            try { _ = new DateTime(rocYear + 1911, month, day); }
+            catch { continue; }
             return $"{rocYear + 1911:D4}-{month:D2}-{day:D2}";
         }
-        return DateTime.Today.ToString("yyyy-MM-dd");
+        return null;
     }
 }

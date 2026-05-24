@@ -53,8 +53,10 @@ public static class PdfGenerator
         PdfFontFactory.CreateFont(FontEntry.Value, PdfEncodings.IDENTITY_H));
 
     // -------------------------------------------------------
-    // Public entry point
+    // Public entry points
     // -------------------------------------------------------
+
+    /// <summary>Reads Excel from stream, then generates the PDF.</summary>
     public static (int rowCount, string orderDate, int vendorCount) BuildPdf(
         Stream excelSource,
         Stream pdfOutput,
@@ -67,12 +69,31 @@ public static class PdfGenerator
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
 
-        string finalDate = orderDate ?? TextHelper.InferOrderDate(filename, orders);
+        string finalDate = orderDate
+            ?? TextHelper.InferOrderDate(filename, orders)
+            ?? DateTime.Today.ToString("yyyy-MM-dd");
         var hs = hospital ?? HospitalSettings.Default();
         BuildPdfFromOrders(orders, pdfOutput, finalDate, hs);
 
         int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
         return (orders.Count, finalDate, vendorCount);
+    }
+
+    /// <summary>Generates PDF from a pre-read list of orders.</summary>
+    public static (int rowCount, string orderDate, int vendorCount) BuildPdf(
+        List<OrderRow> orders,
+        Stream pdfOutput,
+        string orderDate,
+        HospitalSettings? hospital = null)
+    {
+        if (orders.Count == 0)
+            throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
+
+        var hs = hospital ?? HospitalSettings.Default();
+        BuildPdfFromOrders(orders, pdfOutput, orderDate, hs);
+
+        int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
+        return (orders.Count, orderDate, vendorCount);
     }
 
     // -------------------------------------------------------

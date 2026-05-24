@@ -30,7 +30,9 @@ public static class AppSettings
                        ?? ValidationConfig.Default();
             }
         }
-        catch { /* corrupt file — fall through to default */ }
+        catch (JsonException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         return ValidationConfig.Default();
     }
 
@@ -55,7 +57,9 @@ public static class AppSettings
                        ?? HospitalSettings.Default();
             }
         }
-        catch { }
+        catch (JsonException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         return HospitalSettings.Default();
     }
 
@@ -63,6 +67,33 @@ public static class AppSettings
     {
         EnsureDir();
         File.WriteAllText(HospitalPath, JsonSerializer.Serialize(settings, JsonOpts));
+    }
+
+    // ---- General settings ----
+
+    static readonly string GeneralPath = Path.Combine(ConfigDir, "general_settings.json");
+
+    public static GeneralSettings LoadGeneral()
+    {
+        try
+        {
+            if (File.Exists(GeneralPath))
+            {
+                var json = File.ReadAllText(GeneralPath);
+                return JsonSerializer.Deserialize<GeneralSettings>(json, JsonOpts)
+                       ?? GeneralSettings.Default();
+            }
+        }
+        catch (JsonException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return GeneralSettings.Default();
+    }
+
+    public static void SaveGeneral(GeneralSettings settings)
+    {
+        EnsureDir();
+        File.WriteAllText(GeneralPath, JsonSerializer.Serialize(settings, JsonOpts));
     }
 
     static void EnsureDir() => Directory.CreateDirectory(ConfigDir);

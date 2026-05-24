@@ -91,7 +91,7 @@ public static class ExcelReader
             var headerRow = ws.Row(rowNo);
             var index     = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-            int lastHeaderCol = ws.LastCellUsed()?.Address.ColumnNumber ?? 0;
+            int lastHeaderCol = ws.Row(rowNo).LastCellUsed()?.Address.ColumnNumber ?? 0;
             for (int col = 1; col <= lastHeaderCol; col++)
             {
                 var cell = ws.Cell(rowNo, col);

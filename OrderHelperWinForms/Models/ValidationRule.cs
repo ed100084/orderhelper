@@ -30,4 +30,4 @@ public class ValidationConfig
     };
 }
 
-public record ValidationError(int RowIndex, string Field, string Message);
+public record ValidationError(int RowIndex, string OrderNo, string Field, string Message);
