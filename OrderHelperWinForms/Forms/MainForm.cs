@@ -66,8 +66,10 @@ public class MainForm : Form
         tabs.TabPages.Add(BuildTab2());
         tabs.TabPages.Add(BuildTab3());
 
-        Controls.Add(menu);
-        Controls.Add(tabs);
+        // Fill control must be added BEFORE Top/Bottom controls; otherwise the
+        // MenuStrip (z-order 0) renders on top of the TabControl's tab-header strip.
+        Controls.Add(tabs);   // Fill — added first, lower visual z-order
+        Controls.Add(menu);   // Top  — added second, higher visual z-order
         MainMenuStrip = menu;
 
         // Dirty-flag tracking
