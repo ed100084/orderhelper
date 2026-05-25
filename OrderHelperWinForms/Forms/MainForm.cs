@@ -141,7 +141,7 @@ public class MainForm : Form
         y += 34;
 
         _btnExportSample.Text      = "匯出範例 Excel…";
-        _btnExportSample.SetBounds(P + 100, y, 160, 24);
+        _btnExportSample.SetBounds(P + 100, y, 160, 26);
         _btnExportSample.ForeColor = Color.DarkGreen;
         _btnExportSample.FlatStyle = FlatStyle.Flat;
         _btnExportSample.Click    += BtnExportSample_Click;
@@ -163,7 +163,7 @@ public class MainForm : Form
         _dtpOrderDate.Enabled = false;
 
         _chkAutoDate.Text    = "自動從檔名/單號推算";
-        _chkAutoDate.SetBounds(P + 258, y + 3, 180, 22);
+        _chkAutoDate.SetBounds(P + 258, y + 1, 180, 24);
         _chkAutoDate.Checked = true;
         _chkAutoDate.CheckedChanged += (_, _) => _dtpOrderDate.Enabled = !_chkAutoDate.Checked;
         y += 38;
@@ -185,7 +185,7 @@ public class MainForm : Form
         _btnGenerate.Click    += BtnGenerate_Click;
 
         _chkSplitByVendor.Text      = "分廠商輸出（每家廠商一個 PDF）";
-        _chkSplitByVendor.SetBounds(P + 128, y + 8, 300, 20);
+        _chkSplitByVendor.SetBounds(P + 128, y + 6, 300, 24);
         _chkSplitByVendor.Checked   = false;
         y += 48;
 
@@ -323,15 +323,15 @@ public class MainForm : Form
         // ---- "一般設定" GroupBox ----
         var gbGeneral = new GroupBox { Text = "一般設定", Left = 0, Top = y, Width = 680, Height = 112 };
         _chkAutoSaveDir.Text = "PDF 自動存於 Excel 同目錄（不顯示存檔對話框）";
-        _chkAutoSaveDir.SetBounds(Pad, 22, 440, 22);
+        _chkAutoSaveDir.SetBounds(Pad, 22, 440, 24);
         var lblPdfDir = new Label
         {
-            Text = "預設儲存目錄：", Left = Pad, Top = 50, Width = LblW, Height = 22,
+            Text = "預設儲存目錄：", Left = Pad, Top = 50, Width = LblW, Height = 26,
             TextAlign = ContentAlignment.MiddleRight,
         };
-        _txtDefaultPdfDir.SetBounds(Pad + LblW + 4, 50, 350, 22);
+        _txtDefaultPdfDir.SetBounds(Pad + LblW + 4, 50, 350, 26);
         _btnBrowsePdfDir.Text = "瀏覽…";
-        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 330, 50, 80, 22);
+        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 330, 50, 80, 26);
         _btnBrowsePdfDir.Click += BtnBrowsePdfDir_Click;
         var lblMaxRows = new Label
         {
