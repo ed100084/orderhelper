@@ -141,7 +141,7 @@ public class MainForm : Form
         y += 34;
 
         _btnExportSample.Text      = "匯出範例 Excel…";
-        _btnExportSample.SetBounds(P + 100, y, 130, 24);
+        _btnExportSample.SetBounds(P + 100, y, 160, 24);
         _btnExportSample.ForeColor = Color.DarkGreen;
         _btnExportSample.FlatStyle = FlatStyle.Flat;
         _btnExportSample.Click    += BtnExportSample_Click;
@@ -185,7 +185,7 @@ public class MainForm : Form
         _btnGenerate.Click    += BtnGenerate_Click;
 
         _chkSplitByVendor.Text      = "分廠商輸出（每家廠商一個 PDF）";
-        _chkSplitByVendor.SetBounds(P + 128, y + 8, 260, 20);
+        _chkSplitByVendor.SetBounds(P + 128, y + 8, 300, 20);
         _chkSplitByVendor.Checked   = false;
         y += 48;
 
@@ -331,7 +331,7 @@ public class MainForm : Form
         };
         _txtDefaultPdfDir.SetBounds(Pad + LblW + 4, 50, 350, 22);
         _btnBrowsePdfDir.Text = "瀏覽…";
-        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 354, 50, 60, 22);
+        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 330, 50, 80, 22);
         _btnBrowsePdfDir.Click += BtnBrowsePdfDir_Click;
         var lblMaxRows = new Label
         {
@@ -436,7 +436,7 @@ public class MainForm : Form
             foreach (var tb in _hsFields.Values) tb.Width = tbW;
 
             // "一般設定" browse-button row
-            int btnLeft = Math.Max(Pad + LblW + 4 + 64, gbW - Pad - 62);
+            int btnLeft = Math.Max(Pad + LblW + 4 + 64, gbW - Pad - 82);
             _btnBrowsePdfDir.Left   = btnLeft;
             _txtDefaultPdfDir.Width = Math.Max(60, btnLeft - (Pad + LblW + 4) - 4);
         };
