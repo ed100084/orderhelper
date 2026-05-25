@@ -30,9 +30,10 @@ public class MainForm : Form
     readonly Dictionary<string, TextBox> _hsFields     = new();
     readonly Button         _btnSaveHospital  = new();
     readonly Button         _btnResetHospital = new();
-    readonly CheckBox       _chkAutoSaveDir   = new();
-    readonly TextBox        _txtDefaultPdfDir = new();
-    readonly Button         _btnBrowsePdfDir  = new();
+    readonly CheckBox        _chkAutoSaveDir   = new();
+    readonly TextBox         _txtDefaultPdfDir = new();
+    readonly Button          _btnBrowsePdfDir  = new();
+    readonly NumericUpDown   _nudMaxRows       = new();
 
     // ---- State ----
     string?          _excelPath;
@@ -83,6 +84,7 @@ public class MainForm : Form
             tb.TextChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
         _chkAutoSaveDir.CheckedChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
         _txtDefaultPdfDir.TextChanged  += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
+        _nudMaxRows.ValueChanged       += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
 
         _suspendDirtyTracking = true;
         BindRulesGrid();
@@ -319,7 +321,7 @@ public class MainForm : Form
         int y = 0;
 
         // ---- "一般設定" GroupBox ----
-        var gbGeneral = new GroupBox { Text = "一般設定", Left = 0, Top = y, Width = 680, Height = 82 };
+        var gbGeneral = new GroupBox { Text = "一般設定", Left = 0, Top = y, Width = 680, Height = 112 };
         _chkAutoSaveDir.Text = "PDF 自動存於 Excel 同目錄（不顯示存檔對話框）";
         _chkAutoSaveDir.SetBounds(Pad, 22, 440, 22);
         var lblPdfDir = new Label
@@ -331,7 +333,26 @@ public class MainForm : Form
         _btnBrowsePdfDir.Text = "瀏覽…";
         _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 354, 50, 60, 22);
         _btnBrowsePdfDir.Click += BtnBrowsePdfDir_Click;
-        gbGeneral.Controls.AddRange(new Control[] { _chkAutoSaveDir, lblPdfDir, _txtDefaultPdfDir, _btnBrowsePdfDir });
+        var lblMaxRows = new Label
+        {
+            Text = "每頁最多筆數：", Left = Pad, Top = 80, Width = LblW, Height = 22,
+            TextAlign = ContentAlignment.MiddleRight,
+        };
+        _nudMaxRows.SetBounds(Pad + LblW + 4, 80, 70, 22);
+        _nudMaxRows.Minimum  = 1;
+        _nudMaxRows.Maximum  = 99;
+        _nudMaxRows.Value    = 10;
+        var lblMaxRowsHint = new Label
+        {
+            Text = "筆（預設 10，超長品名時實際筆數可能略少）",
+            Left = Pad + LblW + 4 + 74, Top = 80, Width = 320, Height = 22,
+            TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray,
+        };
+        gbGeneral.Controls.AddRange(new Control[]
+        {
+            _chkAutoSaveDir, lblPdfDir, _txtDefaultPdfDir, _btnBrowsePdfDir,
+            lblMaxRows, _nudMaxRows, lblMaxRowsHint,
+        });
         scroll.Controls.Add(gbGeneral);
         groupBoxes.Add(gbGeneral);
         y += gbGeneral.Height + Pad;
@@ -450,6 +471,7 @@ public class MainForm : Form
     {
         _chkAutoSaveDir.Checked = _generalSettings.AutoSaveSameDir;
         _txtDefaultPdfDir.Text  = _generalSettings.DefaultPdfDirectory ?? "";
+        _nudMaxRows.Value       = Math.Clamp(_generalSettings.MaxRowsPerPage, 1, 99);
     }
 
     void Set(string key, string val)    { if (_hsFields.TryGetValue(key, out var tb)) tb.Text = val; }
@@ -733,7 +755,8 @@ public class MainForm : Form
             try
             {
                 splitFiles = await Task.Run(() =>
-                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospSnap2));
+                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospSnap2,
+                        _generalSettings.MaxRowsPerPage));
             }
             catch (Exception ex) { splitErr = ex.Message; }
             finally { SetBusy(false); }
@@ -809,7 +832,8 @@ public class MainForm : Form
                 try
                 {
                     using (var pdfStream = File.Create(tempPath))
-                        PdfGenerator.BuildPdf(ordersSnap, pdfStream, dateSnap, hospitalSnap);
+                        PdfGenerator.BuildPdf(ordersSnap, pdfStream, dateSnap, hospitalSnap,
+                            _generalSettings.MaxRowsPerPage);
                     File.Move(tempPath, savePath, overwrite: true);
                     int vc = ordersSnap.Select(o => o.Vendor).Distinct().Count();
                     return (ordersSnap.Count, dateSnap, vc);
@@ -921,6 +945,7 @@ public class MainForm : Form
         _generalSettings.DefaultPdfDirectory = string.IsNullOrWhiteSpace(_txtDefaultPdfDir.Text)
                                                ? null
                                                : _txtDefaultPdfDir.Text.Trim();
+        _generalSettings.MaxRowsPerPage      = (int)_nudMaxRows.Value;
         AppSettings.SaveHospital(_hospitalSettings);
         AppSettings.SaveGeneral(_generalSettings);
         _settingsDirty = false;

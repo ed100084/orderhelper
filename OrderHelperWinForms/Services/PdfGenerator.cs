@@ -63,7 +63,8 @@ public static class PdfGenerator
         string filename = "orders.xlsx",
         string? orderDate = null,
         HospitalSettings? hospital = null,
-        string? sheetName = null)
+        string? sheetName = null,
+        int maxRowsPerPage = 10)
     {
         var orders = ExcelReader.ReadOrders(excelSource, sheetName);
         if (orders.Count == 0)
@@ -73,7 +74,7 @@ public static class PdfGenerator
             ?? TextHelper.InferOrderDate(filename, orders)
             ?? DateTime.Today.ToString("yyyy-MM-dd");
         var hs = hospital ?? HospitalSettings.Default();
-        BuildPdfFromOrders(orders, pdfOutput, finalDate, hs);
+        BuildPdfFromOrders(orders, pdfOutput, finalDate, hs, maxRowsPerPage);
 
         int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
         return (orders.Count, finalDate, vendorCount);
@@ -84,13 +85,14 @@ public static class PdfGenerator
         List<OrderRow> orders,
         Stream pdfOutput,
         string orderDate,
-        HospitalSettings? hospital = null)
+        HospitalSettings? hospital = null,
+        int maxRowsPerPage = 10)
     {
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
 
         var hs = hospital ?? HospitalSettings.Default();
-        BuildPdfFromOrders(orders, pdfOutput, orderDate, hs);
+        BuildPdfFromOrders(orders, pdfOutput, orderDate, hs, maxRowsPerPage);
 
         int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
         return (orders.Count, orderDate, vendorCount);
@@ -100,13 +102,13 @@ public static class PdfGenerator
     // Core PDF builder
     // -------------------------------------------------------
     static void BuildPdfFromOrders(List<OrderRow> orders, Stream output, string orderDate,
-                                   HospitalSettings hs)
+                                   HospitalSettings hs, int maxRowsPerPage = 10)
     {
         using var writer  = new PdfWriter(output);
         using var pdfDoc  = new PdfDocument(writer);
         var font = PdfFontFactory.CreateFont(FontEntry.Value, PdfEncodings.IDENTITY_H, pdfDoc);
 
-        var vendorPages = BuildVendorPages(orders);
+        var vendorPages = BuildVendorPages(orders, maxRowsPerPage);
         // Track cumulative row count per vendor so sequence numbers continue across pages
         var seqByVendor = new Dictionary<string, int>();
         foreach (var vp in vendorPages)
@@ -128,7 +130,7 @@ public static class PdfGenerator
     // -------------------------------------------------------
     // Vendor grouping & pagination  (mirrors app.py logic)
     // -------------------------------------------------------
-    static List<VendorPage> BuildVendorPages(List<OrderRow> orders)
+    static List<VendorPage> BuildVendorPages(List<OrderRow> orders, int maxRowsPerPage = 10)
     {
         // Group by vendor, preserving insertion order
         var grouped = new Dictionary<string, List<OrderRow>>();
@@ -148,7 +150,7 @@ public static class PdfGenerator
         {
             var vendorOrders = grouped[key];
             var first  = vendorOrders[0];
-            var chunks = PaginateVendorOrders(vendorOrders);
+            var chunks = PaginateVendorOrders(vendorOrders, maxRowsPerPage);
             for (int i = 0; i < chunks.Count; i++)
             {
                 pages.Add(new VendorPage(
@@ -164,9 +166,7 @@ public static class PdfGenerator
         return pages;
     }
 
-    const int MaxRowsPerPage = 10;
-
-    static List<List<OrderRow>> PaginateVendorOrders(List<OrderRow> orders)
+    static List<List<OrderRow>> PaginateVendorOrders(List<OrderRow> orders, int maxRowsPerPage = 10)
     {
         float capacity = DETAIL_TOP - 58.0f; // usable body height (DETAIL_BOTTOM = 58 pt)
         var pages    = new List<List<OrderRow>>();
@@ -176,7 +176,7 @@ public static class PdfGenerator
         foreach (var order in orders)
         {
             float rh = DetailRowHeight(order);
-            bool countFull  = current.Count >= MaxRowsPerPage;
+            bool countFull  = current.Count >= maxRowsPerPage;
             bool heightFull = used + rh > capacity;
             if (current.Count > 0 && (countFull || heightFull))
             {
@@ -445,13 +445,14 @@ public static class PdfGenerator
         string outputDir,
         string orderDate,
         string inputStem,
-        HospitalSettings? hospital = null)
+        HospitalSettings? hospital = null,
+        int maxRowsPerPage = 10)
     {
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
 
         var hs       = hospital ?? HospitalSettings.Default();
-        var allPages = BuildVendorPages(orders);
+        var allPages = BuildVendorPages(orders, maxRowsPerPage);
         var result   = new List<(string, string)>();
 
         // Distinct vendor names, preserving order
