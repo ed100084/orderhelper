@@ -228,7 +228,7 @@ public static class PdfGenerator
 
         var rowHeights   = orders.Select(o => DetailRowHeightWithFont(o, font)).ToList();
         float bodyH      = Math.Max(45.44f, rowHeights.Sum());
-        float detailBot  = DETAIL_TOP - DETAIL_HEADER_H - bodyH;
+        float detailBot  = DETAIL_TOP - bodyH;
 
         // Outer rectangles (x, y_bottom, w, h) — identical to reportlab values
         (float x, float y, float w, float h)[] rects =
@@ -246,7 +246,7 @@ public static class PdfGenerator
             canvas.Rectangle(x, y, w, h);
 
         // Horizontal row separators
-        float yPos = DETAIL_TOP - DETAIL_HEADER_H;
+        float yPos = DETAIL_TOP;
         foreach (float rh in rowHeights.SkipLast(1))
         {
             yPos -= rh;
@@ -292,7 +292,7 @@ public static class PdfGenerator
         canvas.SetLineWidth(0.4f)
               .Rectangle(605.8f, 511.2f, 7.0f, 7.0f)
               .Stroke();
-        DrawStr(canvas, font, 12f, 616.0f, 512.7f, "mail訂貨日期");
+        DrawStr(canvas, font, 12f, 619.0f, 512.7f, "mail 訂貨日期");
 
         // Invoice block
         DrawStr(canvas, font, 10f, 30.8f, 488.6f, "發票抬頭：" + hs.InvoiceHeader);
@@ -307,12 +307,14 @@ public static class PdfGenerator
         DrawStr(canvas, font, 10f, 279.7f, 461.6f, "聯絡電話：" + hs.ContactPhone);
         DrawStr(canvas, font, 10f, 279.7f, 449.6f, "傳真：" + hs.ContactFax);
 
-        // Notes
-        DrawStr(canvas, font, 9f, 578.9f, 490.3f, "※備註：");
-        DrawStr(canvas, font, 9f, 578.9f, 479.3f, hs.Note1);
-        DrawStr(canvas, font, 9f, 578.9f, 468.2f, hs.Note2);
-        DrawStr(canvas, font, 9f, 578.9f, 457.2f, hs.Note3);
-        DrawStr(canvas, font, 9f, 578.9f, 446.2f, hs.Note4);
+        // Notes — use DrawFitStr so long text shrinks instead of overflowing off-page
+        const float NoteX    = 578.9f;
+        const float NoteMaxW = 822.76f - NoteX - 4f;   // ≈ 240 pt
+        DrawStr    (canvas, font, 9f, NoteX, 490.3f, "※備註：");
+        DrawFitStr (canvas, font, NoteX, 479.3f, hs.Note1, NoteMaxW, 9f, 6f);
+        DrawFitStr (canvas, font, NoteX, 468.2f, hs.Note2, NoteMaxW, 9f, 6f);
+        DrawFitStr (canvas, font, NoteX, 457.2f, hs.Note3, NoteMaxW, 9f, 6f);
+        DrawFitStr (canvas, font, NoteX, 446.2f, hs.Note4, NoteMaxW, 9f, 6f);
 
         // Column headers
         DrawStr(canvas, font, 12f,  30.4f, 417.1f, "序號");
@@ -335,7 +337,7 @@ public static class PdfGenerator
         DrawFitStr(canvas, font, 423.0f, 512.7f, page.Fax,             136.0f, 12f);
         DrawStr(canvas, font, 12f, 747.6f, 511.9f, orderDate);
 
-        float yTop = DETAIL_TOP - DETAIL_HEADER_H;
+        float yTop = DETAIL_TOP;
         for (int idx = 0; idx < page.Orders.Count; idx++)
         {
             var order  = page.Orders[idx];
@@ -407,5 +409,67 @@ public static class PdfGenerator
         while (size > minFontSize && font.GetWidth(text, size) > maxWidth)
             size -= 0.5f;
         DrawStr(canvas, font, size, x, y, text);
+    }
+
+    // -------------------------------------------------------
+    // Per-vendor split output
+    // -------------------------------------------------------
+
+    /// <summary>
+    /// Generates one PDF file per vendor and writes them to <paramref name="outputDir"/>.
+    /// The file name pattern is  {inputStem}_{vendorName}_訂購單.pdf.
+    /// Returns a list of (vendorName, filePath) in vendor order.
+    /// </summary>
+    public static List<(string Vendor, string FilePath)> BuildPdfPerVendor(
+        List<OrderRow> orders,
+        string outputDir,
+        string orderDate,
+        string inputStem,
+        HospitalSettings? hospital = null)
+    {
+        if (orders.Count == 0)
+            throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
+
+        var hs       = hospital ?? HospitalSettings.Default();
+        var allPages = BuildVendorPages(orders);
+        var result   = new List<(string, string)>();
+
+        // Distinct vendor names, preserving order
+        var vendorNames = allPages.Select(vp => vp.Vendor).Distinct().ToList();
+
+        Directory.CreateDirectory(outputDir);
+
+        foreach (var vendor in vendorNames)
+        {
+            var vendorPages = allPages.Where(vp => vp.Vendor == vendor).ToList();
+            string safeName = SanitizeFileName(vendor);
+            string fileName = $"{inputStem}_{safeName}_訂購單.pdf";
+            string filePath = System.IO.Path.Combine(outputDir, fileName);
+
+            using var writer = new PdfWriter(filePath);
+            using var pdfDoc = new PdfDocument(writer);
+            var font = PdfFontFactory.CreateFont(FontEntry.Value, PdfEncodings.IDENTITY_H, pdfDoc);
+
+            foreach (var vp in vendorPages)
+            {
+                var page   = pdfDoc.AddNewPage(new PageSize(PAGE_W, PAGE_H));
+                var canvas = new PdfCanvas(page);
+                canvas.SetStrokeColor(ColorConstants.BLACK)
+                      .SetFillColor(ColorConstants.BLACK);
+                var rowHeights = DrawRects(canvas, vp.Orders, font);
+                DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs);
+                DrawVendorPage(canvas, font, vp, orderDate, rowHeights);
+            }
+
+            result.Add((vendor, filePath));
+        }
+
+        return result;
+    }
+
+    static string SanitizeFileName(string name)
+    {
+        var invalid = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars());
+        return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
     }
 }

@@ -8,12 +8,13 @@ namespace OrderHelperWinForms.Forms;
 public class MainForm : Form
 {
     // ---- Tab 1 controls ----
-    readonly Button         _btnSelectExcel  = new();
-    readonly Button         _btnExportSample = new();
-    readonly Label          _lblExcelPath    = new();
-    readonly DateTimePicker _dtpOrderDate    = new();
-    readonly CheckBox       _chkAutoDate     = new();
-    readonly Button         _btnGenerate     = new();
+    readonly Button         _btnSelectExcel   = new();
+    readonly Button         _btnExportSample  = new();
+    readonly Label          _lblExcelPath     = new();
+    readonly DateTimePicker _dtpOrderDate     = new();
+    readonly CheckBox       _chkAutoDate      = new();
+    readonly Button         _btnGenerate      = new();
+    readonly CheckBox       _chkSplitByVendor = new();
     readonly ProgressBar    _progress        = new();
     readonly Label          _lblStatus       = new();
     readonly Label          _lblValidation   = new();
@@ -180,6 +181,10 @@ public class MainForm : Form
         _btnGenerate.FlatStyle = FlatStyle.Flat;
         _btnGenerate.Enabled   = false;
         _btnGenerate.Click    += BtnGenerate_Click;
+
+        _chkSplitByVendor.Text      = "分廠商輸出（每家廠商一個 PDF）";
+        _chkSplitByVendor.SetBounds(P + 128, y + 8, 260, 20);
+        _chkSplitByVendor.Checked   = false;
         y += 48;
 
         _progress.SetBounds(P, y, 0, 6);
@@ -220,7 +225,7 @@ public class MainForm : Form
             lblTitle, _btnSelectExcel, _lblExcelPath,
             _btnExportSample, lblSampleHint,
             lblDate, _dtpOrderDate, _chkAutoDate,
-            sep, _btnGenerate, _progress, _lblStatus,
+            sep, _btnGenerate, _chkSplitByVendor, _progress, _lblStatus,
             _lblValidation, _dgvErrors,
         });
 
@@ -690,6 +695,70 @@ public class MainForm : Form
         else
         {
             orderDate = _dtpOrderDate.Value.ToString("yyyy-MM-dd");
+        }
+
+        // ---- 分廠商輸出 mode ----
+        if (_chkSplitByVendor.Checked)
+        {
+            string splitDir;
+            if (_generalSettings.AutoSaveSameDir)
+            {
+                splitDir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
+                           ? _generalSettings.DefaultPdfDirectory
+                           : Path.GetDirectoryName(excelPath) ?? "";
+            }
+            else
+            {
+                string initDir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
+                                 ? _generalSettings.DefaultPdfDirectory
+                                 : Path.GetDirectoryName(excelPath) ?? "";
+                using var dirDlg = new FolderBrowserDialog
+                {
+                    Description            = "選擇分廠商 PDF 的輸出目錄",
+                    UseDescriptionForTitle = true,
+                    SelectedPath           = initDir,
+                };
+                if (dirDlg.ShowDialog(this) != DialogResult.OK) return;
+                splitDir = dirDlg.SelectedPath;
+            }
+
+            var    hospSnap2 = _hospitalSettings;
+            var    ordSnap2  = orders!;
+            string dateSnap2 = orderDate;
+            string stem2     = Path.GetFileNameWithoutExtension(excelPath);
+
+            SetBusy(true, "正在產生 PDF（分廠商）…");
+            List<(string Vendor, string FilePath)>? splitFiles = null;
+            string? splitErr = null;
+            try
+            {
+                splitFiles = await Task.Run(() =>
+                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospSnap2));
+            }
+            catch (Exception ex) { splitErr = ex.Message; }
+            finally { SetBusy(false); }
+
+            if (splitFiles != null)
+                foreach (var (_, fp) in splitFiles)
+                    ActivityLogger.Log("產生PDF", source: Path.GetFileName(excelPath),
+                        output: Path.GetFileName(fp), success: true);
+
+            if (splitErr != null)
+            {
+                ActivityLogger.Log("產生PDF", source: Path.GetFileName(excelPath),
+                    success: false, error: splitErr);
+                SetStatus("錯誤：" + splitErr, error: true);
+                MessageBox.Show(splitErr, "產生失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            int sc = splitFiles!.Count;
+            SetStatus($"完成！共 {sc} 家廠商，PDF 已存於 {splitDir}", success: true);
+            if (MessageBox.Show(
+                    $"已產生 {sc} 個 PDF 檔案（每家廠商一個）。\n是否開啟輸出目錄？",
+                    "完成", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                Process.Start(new ProcessStartInfo(splitDir) { UseShellExecute = true });
+            return;
         }
 
         // Step 5: Determine save path (H7)
