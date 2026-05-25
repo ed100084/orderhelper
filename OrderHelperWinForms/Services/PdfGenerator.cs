@@ -289,10 +289,12 @@ public static class PdfGenerator
         // Vendor header row labels
         DrawStr(canvas, font, 12f,  30.8f, 512.7f, "廠商名稱");
         DrawStr(canvas, font, 12f, 389.3f, 512.7f, "FAX：");
+        // □ mail   訂貨日期  □  [date]  — two separate checkboxes, matching original layout
         canvas.SetLineWidth(0.4f)
-              .Rectangle(605.8f, 511.2f, 7.0f, 7.0f)
+              .Rectangle(605.8f, 511.2f, 7.0f, 7.0f)   // □ before "mail"
               .Stroke();
-        DrawStr(canvas, font, 12f, 619.0f, 512.7f, "mail 訂貨日期");
+        DrawStr(canvas, font, 12f, 616.0f, 512.7f, "mail");
+        DrawStr(canvas, font, 12f, 683.0f, 512.7f, "訂貨日期");
 
         // Invoice block
         DrawStr(canvas, font, 10f, 30.8f, 488.6f, "發票抬頭：" + hs.InvoiceHeader);
@@ -335,6 +337,10 @@ public static class PdfGenerator
         DrawFitStr(canvas, font,  88.6f, 513.4f, page.Vendor,           98.0f, 12f);
         DrawFitStr(canvas, font, 191.0f, 512.7f, $"TEL：{page.Tel}",   190.0f, 12f);
         DrawFitStr(canvas, font, 423.0f, 512.7f, page.Fax,             136.0f, 12f);
+        // □ before the date (second checkbox)
+        canvas.SetLineWidth(0.4f)
+              .Rectangle(737.0f, 511.2f, 7.0f, 7.0f)
+              .Stroke();
         DrawStr(canvas, font, 12f, 747.6f, 511.9f, orderDate);
 
         float yTop = DETAIL_TOP;
