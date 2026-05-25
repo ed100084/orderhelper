@@ -164,9 +164,11 @@ public static class PdfGenerator
         return pages;
     }
 
+    const int MaxRowsPerPage = 10;
+
     static List<List<OrderRow>> PaginateVendorOrders(List<OrderRow> orders)
     {
-        float capacity = DETAIL_TOP - DETAIL_HEADER_H - 58.0f; // DETAIL_BOTTOM = 58.0
+        float capacity = DETAIL_TOP - 58.0f; // usable body height (DETAIL_BOTTOM = 58 pt)
         var pages    = new List<List<OrderRow>>();
         var current  = new List<OrderRow>();
         float used   = 0f;
@@ -174,7 +176,9 @@ public static class PdfGenerator
         foreach (var order in orders)
         {
             float rh = DetailRowHeight(order);
-            if (current.Count > 0 && used + rh > capacity)
+            bool countFull  = current.Count >= MaxRowsPerPage;
+            bool heightFull = used + rh > capacity;
+            if (current.Count > 0 && (countFull || heightFull))
             {
                 pages.Add(current);
                 current = new List<OrderRow>();
