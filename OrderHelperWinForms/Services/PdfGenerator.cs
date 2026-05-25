@@ -107,8 +107,13 @@ public static class PdfGenerator
         var font = PdfFontFactory.CreateFont(FontEntry.Value, PdfEncodings.IDENTITY_H, pdfDoc);
 
         var vendorPages = BuildVendorPages(orders);
+        // Track cumulative row count per vendor so sequence numbers continue across pages
+        var seqByVendor = new Dictionary<string, int>();
         foreach (var vp in vendorPages)
         {
+            int seqStart = seqByVendor.GetValueOrDefault(vp.Vendor, 0) + 1;
+            seqByVendor[vp.Vendor] = seqStart - 1 + vp.Orders.Count;
+
             var page   = pdfDoc.AddNewPage(new PageSize(PAGE_W, PAGE_H));
             var canvas = new PdfCanvas(page);
             canvas.SetStrokeColor(ColorConstants.BLACK)
@@ -116,7 +121,7 @@ public static class PdfGenerator
 
             var rowHeights = DrawRects(canvas, vp.Orders, font);
             DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs);
-            DrawVendorPage(canvas, font, vp, orderDate, rowHeights);
+            DrawVendorPage(canvas, font, vp, orderDate, rowHeights, seqStart);
         }
     }
 
@@ -331,8 +336,13 @@ public static class PdfGenerator
     // -------------------------------------------------------
     // Per-vendor dynamic content  (_draw_vendor_page)
     // -------------------------------------------------------
+    /// <param name="seqStart">
+    /// 1-based sequence number of the first row on this page.
+    /// Pass 1 for the first page of a vendor; subsequent pages receive the
+    /// cumulative count so numbers continue across page breaks.
+    /// </param>
     static void DrawVendorPage(PdfCanvas canvas, PdfFont font, VendorPage page,
-                               string orderDate, List<float> rowHeights)
+                               string orderDate, List<float> rowHeights, int seqStart = 1)
     {
         DrawFitStr(canvas, font,  88.6f, 513.4f, page.Vendor,           98.0f, 12f);
         DrawFitStr(canvas, font, 191.0f, 512.7f, $"TEL：{page.Tel}",   190.0f, 12f);
@@ -350,7 +360,7 @@ public static class PdfGenerator
             float rh   = rowHeights[idx];
             float y    = yTop - 14.0f;   // baseline inside the row
 
-            DrawCenter(canvas, font, 9f,  42.4f, y, (idx + 1).ToString());
+            DrawCenter(canvas, font, 9f,  42.4f, y, (seqStart + idx).ToString());
             DrawStr   (canvas, font, 9f,  68.0f, y, order.OrderNo);
             DrawStr   (canvas, font, 9f, 181.5f, y, order.ItemNo);
             DrawStr   (canvas, font, 9f, 259.5f, y, order.Code);
@@ -456,6 +466,7 @@ public static class PdfGenerator
             using var pdfDoc = new PdfDocument(writer);
             var font = PdfFontFactory.CreateFont(FontEntry.Value, PdfEncodings.IDENTITY_H, pdfDoc);
 
+            int seqStart = 1;
             foreach (var vp in vendorPages)
             {
                 var page   = pdfDoc.AddNewPage(new PageSize(PAGE_W, PAGE_H));
@@ -464,7 +475,8 @@ public static class PdfGenerator
                       .SetFillColor(ColorConstants.BLACK);
                 var rowHeights = DrawRects(canvas, vp.Orders, font);
                 DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs);
-                DrawVendorPage(canvas, font, vp, orderDate, rowHeights);
+                DrawVendorPage(canvas, font, vp, orderDate, rowHeights, seqStart);
+                seqStart += vp.Orders.Count;
             }
 
             result.Add((vendor, filePath));
