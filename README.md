@@ -1,6 +1,6 @@
 # OrderHelper
 
-義大醫院藥品訂購單 PDF 產生器 — 單一 `.exe`，免安裝，Windows 10/11 x64。
+醫院藥品訂購單 PDF 產生器 — 單一 `.exe`，免安裝，Windows 10/11 x64。
 
 從 Excel 訂購檔批次讀取訂單，依廠商分頁產生 A4 橫向 PDF，可直接列印或傳真。
 
@@ -95,14 +95,14 @@ if ($LASTEXITCODE -ne 0) { Write-Error "PDF 產生失敗" }
 
 ```json
 {
-  "HospitalName": "義大醫院",
+  "HospitalName": "xx醫院",
   "FormTitle": "藥品訂購單",
-  "InvoiceHeader": "財團法人義大醫療財團法人義大醫院",
-  "InvoiceAddress": "高雄市燕巢區角宿里義大路1號",
+  "InvoiceHeader": "xx醫院",
+  "InvoiceAddress": "高雄市xxx",
   "TaxId": "12345678",
   "MedicalCode": "1234567890",
   "DrugLicenseNo": "管藥字第XXXX號",
-  "DeliveryAddress": "高雄市燕巢區角宿里義大路1號 藥劑部",
+  "DeliveryAddress": "高雄市xxx",
   "DeliveryNote": "收貨時間：週一至週五 08:00-17:00",
   "ContactPhone": "07-615-0011",
   "ContactFax": "07-615-0022",
