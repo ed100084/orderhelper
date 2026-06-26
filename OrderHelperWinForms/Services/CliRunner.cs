@@ -45,6 +45,7 @@ public static class CliRunner
         string? configPath = null;
         bool    force      = false;
         bool    help       = false;
+        bool    nextMonthInvoice = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -67,6 +68,9 @@ public static class CliRunner
 
                 case "--force": case "-f":
                     force = true; break;
+
+                case "--next-month-invoice":
+                    nextMonthInvoice = true; break;
             }
         }
 
@@ -159,7 +163,8 @@ public static class CliRunner
             try
             {
                 using (var pdfStream = File.Create(tempPath))
-                    PdfGenerator.BuildPdf(orders, pdfStream, orderDate, hospital);
+                    PdfGenerator.BuildPdf(orders, pdfStream, orderDate, hospital,
+                        nextMonthInvoice: nextMonthInvoice);
                 File.Move(tempPath, savePath, overwrite: true);
             }
             catch
@@ -219,6 +224,7 @@ public static class CliRunner
         Console.WriteLine("  --output,     -o   輸出 PDF 路徑（與 --output-dir 擇一）");
         Console.WriteLine("  --output-dir       輸出目錄，自動以 <原檔名>_訂購單.pdf 命名");
         Console.WriteLine("  --config           自訂 hospital_settings.json 路徑");
+        Console.WriteLine("  --next-month-invoice  在 PDF 備註區加註紅字：請開立下個月發票");
         Console.WriteLine("  --force,      -f   忽略驗證警告，繼續產出 PDF");
         Console.WriteLine("  --help,       -h   顯示此說明");
         Console.WriteLine();
@@ -226,6 +232,7 @@ public static class CliRunner
         Console.WriteLine("  OrderHelper.exe --input orders.xlsx --output orders.pdf");
         Console.WriteLine("  OrderHelper.exe --input orders.xlsx --output-dir D:\\output");
         Console.WriteLine("  OrderHelper.exe --input orders.xlsx --output orders.pdf --force");
+        Console.WriteLine("  OrderHelper.exe --input orders.xlsx --output orders.pdf --next-month-invoice");
         Console.WriteLine("  OrderHelper.exe --input orders.xlsx --output orders.pdf --config custom_hs.json");
         Console.WriteLine();
         Console.WriteLine("退出碼：  0 = 成功   1 = 失敗");

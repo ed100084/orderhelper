@@ -38,6 +38,7 @@ public class MainForm : Form
     readonly CheckBox       _chkAutoDate      = new();
     readonly Button         _btnGenerate      = new();
     readonly CheckBox       _chkSplitByVendor = new();
+    readonly CheckBox       _chkNextMonthInvoice = new();
     readonly ProgressBar    _progress        = new();
     readonly Label          _lblStatus       = new();
     readonly Label          _lblValidation   = new();
@@ -273,8 +274,14 @@ public class MainForm : Form
         _btnGenerate.Click    += BtnGenerate_Click;
 
         _chkSplitByVendor.Text      = "分廠商輸出（每家廠商一個 PDF）";
-        _chkSplitByVendor.SetBounds(P + 128, y + 6, 300, 24);
+        _chkSplitByVendor.SetBounds(P + 128, y + 6, 285, 24);
         _chkSplitByVendor.Checked   = false;
+
+        _chkNextMonthInvoice.Text      = "請開立下個月發票";
+        _chkNextMonthInvoice.SetBounds(P + 420, y + 6, 210, 24);
+        _chkNextMonthInvoice.Checked   = false;
+        _chkNextMonthInvoice.ForeColor = Color.Crimson;
+        _chkNextMonthInvoice.Font      = new Font(_chkNextMonthInvoice.Font, FontStyle.Bold);
         y += 48;
 
         _progress.SetBounds(P, y, 0, 6);
@@ -316,7 +323,7 @@ public class MainForm : Form
             lblTitle, _btnSelectExcel, _lblExcelPath,
             _btnExportSample, lblSampleHint,
             lblDate, _dtpOrderDate, _chkAutoDate,
-            sep, _btnGenerate, _chkSplitByVendor, _progress, _lblStatus,
+            sep, _btnGenerate, _chkSplitByVendor, _chkNextMonthInvoice, _progress, _lblStatus,
             _lblValidation, _dgvErrors,
         });
 
@@ -736,6 +743,7 @@ public class MainForm : Form
         _btnSelectExcel.Enabled = !busy;
         _btnExportSample.Enabled = !busy;
         _chkSplitByVendor.Enabled = !busy;
+        _chkNextMonthInvoice.Enabled = !busy;
         _chkAutoDate.Enabled = !busy;
         _dtpOrderDate.Enabled = !busy && !_chkAutoDate.Checked;
         _dgvRules.Enabled = !busy;
@@ -1017,6 +1025,7 @@ public class MainForm : Form
         var hospitalSnap = ReadHospitalFromUI();
         var generalSnap  = ReadGeneralFromUI();
         int maxRowsSnap  = generalSnap.MaxRowsPerPage;
+        bool nextMonthInvoiceSnap = _chkNextMonthInvoice.Checked;
 
         // ---- 分廠商輸出 mode ----
         if (_chkSplitByVendor.Checked)
@@ -1035,7 +1044,7 @@ public class MainForm : Form
             {
                 splitFiles = await Task.Run(() =>
                     PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospitalSnap,
-                        maxRowsSnap));
+                        maxRowsSnap, nextMonthInvoiceSnap));
             }
             catch (Exception ex) { splitErr = ex.Message; }
             finally { SetBusy(false); }
@@ -1088,7 +1097,7 @@ public class MainForm : Form
                 {
                     using (var pdfStream = File.Create(tempPath))
                         PdfGenerator.BuildPdf(ordersSnap, pdfStream, dateSnap, hospitalSnap,
-                            maxRowsSnap);
+                            maxRowsSnap, nextMonthInvoiceSnap);
                     EnsureOutputDirectory(savePath);
                     File.Move(tempPath, savePath, overwrite: true);
                     int vc = ordersSnap.Select(o => o.Vendor).Distinct().Count();

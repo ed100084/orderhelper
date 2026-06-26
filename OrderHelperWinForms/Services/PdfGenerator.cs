@@ -24,6 +24,7 @@ public static class PdfGenerator
     const float DETAIL_LINE_H    = 10.2f;
     const float DETAIL_ROW_PAD   = 4.0f;
     const float DETAIL_MIN_ROW_H = 24.0f;
+    const string NEXT_MONTH_INVOICE_NOTE = "請開立下個月發票";
 
     // --- Windows system font: 微軟正黑體 Bold ---
     // Try Bold variant first; fall back to Regular if Bold isn't installed.
@@ -64,7 +65,8 @@ public static class PdfGenerator
         string? orderDate = null,
         HospitalSettings? hospital = null,
         string? sheetName = null,
-        int maxRowsPerPage = 10)
+        int maxRowsPerPage = 10,
+        bool nextMonthInvoice = false)
     {
         var orders = ExcelReader.ReadOrders(excelSource, sheetName);
         if (orders.Count == 0)
@@ -74,7 +76,7 @@ public static class PdfGenerator
             ?? TextHelper.InferOrderDate(filename, orders)
             ?? DateTime.Today.ToString("yyyy-MM-dd");
         var hs = hospital ?? HospitalSettings.Default();
-        BuildPdfFromOrders(orders, pdfOutput, finalDate, hs, maxRowsPerPage);
+        BuildPdfFromOrders(orders, pdfOutput, finalDate, hs, maxRowsPerPage, nextMonthInvoice);
 
         int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
         return (orders.Count, finalDate, vendorCount);
@@ -86,13 +88,14 @@ public static class PdfGenerator
         Stream pdfOutput,
         string orderDate,
         HospitalSettings? hospital = null,
-        int maxRowsPerPage = 10)
+        int maxRowsPerPage = 10,
+        bool nextMonthInvoice = false)
     {
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
 
         var hs = hospital ?? HospitalSettings.Default();
-        BuildPdfFromOrders(orders, pdfOutput, orderDate, hs, maxRowsPerPage);
+        BuildPdfFromOrders(orders, pdfOutput, orderDate, hs, maxRowsPerPage, nextMonthInvoice);
 
         int vendorCount = orders.Select(o => o.Vendor).Distinct().Count();
         return (orders.Count, orderDate, vendorCount);
@@ -102,7 +105,8 @@ public static class PdfGenerator
     // Core PDF builder
     // -------------------------------------------------------
     static void BuildPdfFromOrders(List<OrderRow> orders, Stream output, string orderDate,
-                                   HospitalSettings hs, int maxRowsPerPage = 10)
+                                   HospitalSettings hs, int maxRowsPerPage = 10,
+                                   bool nextMonthInvoice = false)
     {
         using var writer  = new PdfWriter(output);
         using var pdfDoc  = new PdfDocument(writer);
@@ -122,7 +126,7 @@ public static class PdfGenerator
                   .SetFillColor(ColorConstants.BLACK);
 
             var rowHeights = DrawRects(canvas, vp.Orders, font);
-            DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs);
+            DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs, nextMonthInvoice);
             DrawVendorPage(canvas, font, vp, orderDate, rowHeights, seqStart);
         }
     }
@@ -297,7 +301,7 @@ public static class PdfGenerator
     // Static (fixed) text/graphics per page  (_draw_static)
     // -------------------------------------------------------
     static void DrawStatic(PdfCanvas canvas, PdfFont font, int pageNo, int totalPages,
-                           HospitalSettings hs)
+                           HospitalSettings hs, bool nextMonthInvoice = false)
     {
         // Title
         DrawCenterBold(canvas, font, 20f, 421f, 566.4f, hs.HospitalName);
@@ -341,6 +345,9 @@ public static class PdfGenerator
         DrawFitStr (canvas, font, NoteX, 468.2f, hs.Note2, NoteMaxW, 9f, 6f);
         DrawFitStr (canvas, font, NoteX, 457.2f, hs.Note3, NoteMaxW, 9f, 6f);
         DrawFitStr (canvas, font, NoteX, 446.2f, hs.Note4, NoteMaxW, 9f, 6f);
+        if (nextMonthInvoice)
+            DrawFitStrColored(canvas, font, NoteX, 435.2f, NEXT_MONTH_INVOICE_NOTE,
+                NoteMaxW, 10f, 7f, ColorConstants.RED);
 
         // Column headers
         DrawStr(canvas, font, 12f,  30.4f, 417.1f, "序號");
@@ -435,6 +442,20 @@ public static class PdfGenerator
         DrawStr(canvas, font, size, x - w / 2f, y, text);
     }
 
+    static void DrawFitStrColored(PdfCanvas canvas, PdfFont font,
+                                  float x, float y, string text,
+                                  float maxWidth, float fontSize, float minFontSize,
+                                  iText.Kernel.Colors.Color color)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        float size = fontSize;
+        while (size > minFontSize && font.GetWidth(text, size) > maxWidth)
+            size -= 0.5f;
+        canvas.SetFillColor(color);
+        DrawStr(canvas, font, size, x, y, text);
+        canvas.SetFillColor(ColorConstants.BLACK);
+    }
+
     static void DrawFitStr(PdfCanvas canvas, PdfFont font,
                            float x, float y, string text,
                            float maxWidth, float fontSize, float minFontSize = 7f)
@@ -461,7 +482,8 @@ public static class PdfGenerator
         string orderDate,
         string inputStem,
         HospitalSettings? hospital = null,
-        int maxRowsPerPage = 10)
+        int maxRowsPerPage = 10,
+        bool nextMonthInvoice = false)
     {
         if (orders.Count == 0)
             throw new InvalidOperationException("Excel 沒有可輸出的訂單資料。");
@@ -494,7 +516,7 @@ public static class PdfGenerator
                 canvas.SetStrokeColor(ColorConstants.BLACK)
                       .SetFillColor(ColorConstants.BLACK);
                 var rowHeights = DrawRects(canvas, vp.Orders, font);
-                DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs);
+                DrawStatic(canvas, font, vp.PageNo, vp.TotalPages, hs, nextMonthInvoice);
                 DrawVendorPage(canvas, font, vp, orderDate, rowHeights, seqStart);
                 seqStart += vp.Orders.Count;
             }

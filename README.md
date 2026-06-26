@@ -13,6 +13,7 @@
 | 讀取 Excel | 自動識別欄位標題（中英文別名皆可）、合併儲存格解析、支援多工作表；電話、傳真、料號等非核心欄位可缺省 |
 | 資料驗證 | 可用下拉選單設定必填、數字、正整數、電話/傳真格式、統編 8 碼、長度上限等常用規則；驗證失敗時列出訂購單號與錯誤原因 |
 | PDF 產生 | A4 橫向，依廠商分頁，自動分頁分割過長訂單 |
+| 下月發票備註 | 月底訂單可勾選「請開立下個月發票」，PDF 右上備註區會以紅字粗體標示 |
 | 日期推算 | 從檔名或訂購單號自動辨識民國日期（YYYMMDD），失敗時提示並設為今天 |
 | 拖放操作 | 直接拖放 `.xlsx` 至視窗，無需按選擇按鈕 |
 | PDF 預覽 | 內建 WebView2 預覽，可直接列印或另存 |
@@ -31,7 +32,8 @@
 
 1. 從 `bin/Publish/` 取得 `OrderHelper.exe`（或自行 publish，見下方）。
 2. 雙擊執行，將 `.xlsx` 訂購檔拖放至視窗，或按「選擇檔案…」。
-3. 點「產生 PDF」，完成後自動預覽。
+3. 月底若需預開下個月發票，勾選「請開立下個月發票」。
+4. 點「產生 PDF」，完成後自動預覽。
 
 ---
 
@@ -51,6 +53,9 @@ OrderHelper.exe --input orders.xlsx --output-dir D:\output
 # 忽略驗證警告強制產出
 OrderHelper.exe --input orders.xlsx --output orders.pdf --force
 
+# 在 PDF 備註區標示「請開立下個月發票」
+OrderHelper.exe --input orders.xlsx --output orders.pdf --next-month-invoice
+
 # 使用自訂醫院設定
 OrderHelper.exe --input orders.xlsx --output orders.pdf --config custom_hospital.json
 
@@ -66,6 +71,7 @@ OrderHelper.exe --help
 | `--output <路徑>` | `-o` | 輸出 PDF 路徑（與 `--output-dir` 擇一） |
 | `--output-dir <目錄>` | | 輸出目錄，自動命名 |
 | `--config <路徑>` | | 自訂 `hospital_settings.json` 路徑 |
+| `--next-month-invoice` | | 在 PDF 右上備註區以紅字粗體標示「請開立下個月發票」 |
 | `--force` | `-f` | 忽略驗證警告繼續產出 |
 | `--help` | `-h` | 顯示說明 |
 
@@ -188,6 +194,11 @@ OrderHelperWinForms/
 ---
 
 ## Changelog
+
+### v1.0.13（2026-06-26）
+
+- **新增**：訂購單產生頁加入「請開立下個月發票」勾選項，供月底預開下個月發票情境使用
+- **改善**：勾選後在 PDF 右上備註區以紅字粗體顯示「請開立下個月發票」
 
 ### v1.0.12（2026-05-26）
 
