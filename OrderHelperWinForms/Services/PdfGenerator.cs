@@ -254,6 +254,21 @@ public static class PdfGenerator
         foreach (var (x, y, w, h) in rects)
             canvas.Rectangle(x, y, w, h);
 
+        // Vendor header row separators. These restore the boxed layout from the
+        // original hospital PDF: vendor label/value, TEL/FAX area, mail/date cells.
+        float topRowBottom = 504.24f;
+        float topRowTop    = 528.24f;
+        float[] topRowX =
+        {
+            84.8f,    // after "廠商名稱"
+            188.0f,   // after vendor name
+            605.0f,   // before mail checkbox area
+            668.0f,   // between mail and 訂貨日期
+            737.0f,   // before second checkbox
+        };
+        foreach (float x in topRowX)
+            canvas.MoveTo(x, topRowBottom).LineTo(x, topRowTop);
+
         // Horizontal row separators
         float yPos = DETAIL_TOP;
         foreach (float rh in rowHeights.SkipLast(1))
@@ -348,7 +363,7 @@ public static class PdfGenerator
     static void DrawVendorPage(PdfCanvas canvas, PdfFont font, VendorPage page,
                                string orderDate, List<float> rowHeights, int seqStart = 1)
     {
-        DrawFitStr(canvas, font,  88.6f, 513.4f, page.Vendor,           98.0f, 12f);
+        DrawFitStr(canvas, font,  88.6f, 513.4f, page.Vendor,           96.0f, 12f);
         DrawFitStr(canvas, font, 191.0f, 512.7f, $"TEL：{page.Tel}",   190.0f, 12f);
         DrawFitStr(canvas, font, 423.0f, 512.7f, page.Fax,             136.0f, 12f);
         // □ before the date (second checkbox)

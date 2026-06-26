@@ -20,6 +20,11 @@ public static class ExcelReader
         ["fax"]      = new[] { "傳真", "廠商傳真", "fax", "facsimile" },
     };
 
+    static readonly string[] RequiredFieldKeys =
+    {
+        "order_no", "name", "quantity", "vendor",
+    };
+
     // -------------------------------------------------------
     // Public API
     // -------------------------------------------------------
@@ -73,7 +78,7 @@ public static class ExcelReader
 
             throw new InvalidDataException(
                 "找不到包含「訂購單號」與「廠商名稱」欄位的工作表。\n" +
-                "請確認 Excel 第一列（或前十列之一）為欄位標題，且包含這兩個必要欄位。");
+                "請確認 Excel 第一列（或前十列之一）為欄位標題；必要欄位為訂購單號、品名規格、訂購量、廠商名稱。");
         }
     }
 
@@ -105,15 +110,16 @@ public static class ExcelReader
             // Must recognise both order_no and vendor to treat this as the header
             if (!HasAlias(index, "order_no") || !HasAlias(index, "vendor")) continue;
 
-            // Map every required field; collect names of those that are missing
+            // Map recognised fields. Only business-critical columns are hard-required;
+            // optional contact/code fields can be validated later by user rules.
             var cols    = new Dictionary<string, int>();
             var missing = new List<string>();
             foreach (var (key, _) in FieldAliases)
             {
                 int col = FindColumn(index, key);
-                if (col < 0)
+                if (col < 0 && RequiredFieldKeys.Contains(key))
                     missing.Add(FieldAliases[key][0]);   // show the primary alias in the error
-                else
+                else if (col >= 0)
                     cols[key] = col;
             }
 
@@ -141,14 +147,14 @@ public static class ExcelReader
 
                 orders.Add(new OrderRow(
                     OrderNo:  orderNo,
-                    ItemNo:   GetCellText(ResolveCell(ws.Cell(r, cols["item_no"]))),
-                    Code:     GetCellText(ResolveCell(ws.Cell(r, cols["code"]))),
-                    Name:     GetCellText(ResolveCell(ws.Cell(r, cols["name"]))),
-                    Unit:     GetCellText(ResolveCell(ws.Cell(r, cols["unit"]))),
-                    Quantity: GetCellText(ResolveCell(ws.Cell(r, cols["quantity"]))),
-                    Vendor:   GetCellText(ResolveCell(ws.Cell(r, cols["vendor"]))),
-                    Tel:      GetCellText(ResolveCell(ws.Cell(r, cols["tel"]))),
-                    Fax:      GetCellText(ResolveCell(ws.Cell(r, cols["fax"])))
+                    ItemNo:   CellTextOrEmpty(ws, r, cols, "item_no"),
+                    Code:     CellTextOrEmpty(ws, r, cols, "code"),
+                    Name:     CellTextOrEmpty(ws, r, cols, "name"),
+                    Unit:     CellTextOrEmpty(ws, r, cols, "unit"),
+                    Quantity: CellTextOrEmpty(ws, r, cols, "quantity"),
+                    Vendor:   CellTextOrEmpty(ws, r, cols, "vendor"),
+                    Tel:      CellTextOrEmpty(ws, r, cols, "tel"),
+                    Fax:      CellTextOrEmpty(ws, r, cols, "fax")
                 ));
             }
 
@@ -157,6 +163,11 @@ public static class ExcelReader
 
         return null; // no valid header found on this sheet
     }
+
+    static string CellTextOrEmpty(IXLWorksheet ws, int row, Dictionary<string, int> cols, string key)
+        => cols.TryGetValue(key, out int col)
+            ? GetCellText(ResolveCell(ws.Cell(row, col)))
+            : "";
 
     // If the cell belongs to a merged range, return the top-left cell's value.
     static XLCellValue ResolveCell(IXLCell cell)

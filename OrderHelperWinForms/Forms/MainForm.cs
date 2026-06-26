@@ -7,6 +7,29 @@ namespace OrderHelperWinForms.Forms;
 
 public class MainForm : Form
 {
+    static readonly Color AppBack       = Color.FromArgb(246, 248, 251);
+    static readonly Color PanelBack     = Color.White;
+    static readonly Color PrimaryBlue   = Color.FromArgb(37, 99, 235);
+    static readonly Color PrimaryHover  = Color.FromArgb(29, 78, 216);
+    static readonly Color BorderGray    = Color.FromArgb(214, 220, 229);
+    static readonly Color TextMuted     = Color.FromArgb(100, 116, 139);
+    static readonly Color TextStrong    = Color.FromArgb(15, 23, 42);
+
+    static readonly string[] RuleChoices =
+    {
+        "必填",
+        "必須是數字",
+        "必須大於 0",
+        "必須是整數",
+        "必須是正整數",
+        "不可為 0",
+        "電話/傳真格式",
+        "統一編號 8 碼",
+        "長度不超過 20 字",
+        "長度不超過 50 字",
+        "長度不超過 100 字",
+    };
+
     // ---- Tab 1 controls ----
     readonly Button         _btnSelectExcel   = new();
     readonly Button         _btnExportSample  = new();
@@ -30,7 +53,9 @@ public class MainForm : Form
     readonly Dictionary<string, TextBox> _hsFields     = new();
     readonly Button         _btnSaveHospital  = new();
     readonly Button         _btnResetHospital = new();
-    readonly CheckBox        _chkAutoSaveDir   = new();
+    readonly RadioButton     _rdoOutputExcelDir = new();
+    readonly RadioButton     _rdoOutputDefaultDir = new();
+    readonly RadioButton     _rdoOutputAsk = new();
     readonly TextBox         _txtDefaultPdfDir = new();
     readonly Button          _btnBrowsePdfDir  = new();
     readonly NumericUpDown   _nudMaxRows       = new();
@@ -61,6 +86,8 @@ public class MainForm : Form
         MinimumSize   = new Size(660, 600);
         StartPosition = FormStartPosition.CenterScreen;
         AllowDrop     = true;
+        Font          = new Font("Microsoft JhengHei UI", 9F, FontStyle.Regular);
+        BackColor     = AppBack;
 
         var menu = BuildMenu();
         var tabs = new TabControl { Dock = DockStyle.Fill };
@@ -75,14 +102,28 @@ public class MainForm : Form
         MainMenuStrip = menu;
 
         // Dirty-flag tracking
-        _dgvRules.CellValueChanged += (_, _) => { if (!_suspendDirtyTracking) _rulesDirty = true; };
+        _dgvRules.CellValueChanged += (_, e) =>
+        {
+            if (!_suspendDirtyTracking)
+            {
+                _rulesDirty = true;
+                ApplyDefaultRuleMessage(e.RowIndex);
+            }
+        };
+        _dgvRules.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (_dgvRules.IsCurrentCellDirty)
+                _dgvRules.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
         _dgvRules.RowsAdded        += (_, _) => { if (!_suspendDirtyTracking) _rulesDirty = true; };
         _dgvRules.RowsRemoved      += (_, _) => { if (!_suspendDirtyTracking) _rulesDirty = true; };
         _dgvRules.DataError        += (_, e) => e.ThrowException = false;
 
         foreach (var tb in _hsFields.Values)
             tb.TextChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
-        _chkAutoSaveDir.CheckedChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
+        _rdoOutputExcelDir.CheckedChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; UpdateOutputDirectoryControls(); };
+        _rdoOutputDefaultDir.CheckedChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; UpdateOutputDirectoryControls(); };
+        _rdoOutputAsk.CheckedChanged += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; UpdateOutputDirectoryControls(); };
         _txtDefaultPdfDir.TextChanged  += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
         _nudMaxRows.ValueChanged       += (_, _) => { if (!_suspendDirtyTracking) _settingsDirty = true; };
 
@@ -96,12 +137,59 @@ public class MainForm : Form
         DragDrop  += MainForm_DragDrop;
     }
 
+    static void StylePage(TabPage page)
+    {
+        page.BackColor = AppBack;
+        page.ForeColor = TextStrong;
+    }
+
+    static void StyleButton(Button button, bool primary = false)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = primary ? 0 : 1;
+        button.FlatAppearance.BorderColor = BorderGray;
+        button.BackColor = primary ? PrimaryBlue : PanelBack;
+        button.ForeColor = primary ? Color.White : TextStrong;
+        button.Cursor = Cursors.Hand;
+        button.UseVisualStyleBackColor = false;
+        if (primary)
+        {
+            button.FlatAppearance.MouseOverBackColor = PrimaryHover;
+            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(30, 64, 175);
+        }
+    }
+
+    static void StyleGrid(DataGridView grid)
+    {
+        grid.BackgroundColor = PanelBack;
+        grid.BorderStyle = BorderStyle.None;
+        grid.GridColor = BorderGray;
+        grid.EnableHeadersVisualStyles = false;
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(241, 245, 249);
+        grid.ColumnHeadersDefaultCellStyle.ForeColor = TextStrong;
+        grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(241, 245, 249);
+        grid.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold);
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
+        grid.DefaultCellStyle.SelectionForeColor = TextStrong;
+        grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(248, 250, 252);
+        grid.RowTemplate.Height = 28;
+    }
+
+    static void StyleGroupBox(GroupBox box)
+    {
+        box.BackColor = PanelBack;
+        box.ForeColor = TextStrong;
+        box.Padding = new Padding(8);
+    }
+
     // ============================================================
     // Menu
     // ============================================================
     MenuStrip BuildMenu()
     {
         var menu     = new MenuStrip();
+        menu.BackColor = PanelBack;
+        menu.ForeColor = TextStrong;
         var miTools  = new ToolStripMenuItem("工具(&T)");
         var miLog    = new ToolStripMenuItem("檢視操作記錄…");
         var miSep    = new ToolStripSeparator();
@@ -121,6 +209,7 @@ public class MainForm : Form
     TabPage BuildTab1()
     {
         var page = new TabPage("訂購單產生") { Padding = new Padding(10) };
+        StylePage(page);
         const int P = 12;
         var y = P;
 
@@ -131,24 +220,25 @@ public class MainForm : Form
         };
         _btnSelectExcel.Text = "選擇檔案…";
         _btnSelectExcel.SetBounds(P + 100, y, 100, 26);
+        StyleButton(_btnSelectExcel);
         _btnSelectExcel.Click += BtnSelectExcel_Click;
 
         _lblExcelPath.SetBounds(P + 208, y, 0, 26);
         _lblExcelPath.Text      = "（尚未選擇，可拖放 .xlsx 至視窗）";
-        _lblExcelPath.ForeColor = Color.Gray;
+        _lblExcelPath.ForeColor = TextMuted;
         _lblExcelPath.TextAlign = ContentAlignment.MiddleLeft;
         _lblExcelPath.Anchor    = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
         y += 34;
 
         _btnExportSample.Text      = "匯出範例 Excel…";
         _btnExportSample.SetBounds(P + 100, y, 160, 26);
-        _btnExportSample.ForeColor = Color.DarkGreen;
-        _btnExportSample.FlatStyle = FlatStyle.Flat;
+        StyleButton(_btnExportSample);
+        _btnExportSample.ForeColor = Color.FromArgb(22, 101, 52);
         _btnExportSample.Click    += BtnExportSample_Click;
         var lblSampleHint = new Label
         {
             Text = "下載填寫範本", Left = P + 238, Top = y + 3,
-            Width = 200, Height = 18, ForeColor = Color.DimGray,
+            Width = 200, Height = 18, ForeColor = TextMuted,
         };
         y += 32;
 
@@ -165,12 +255,12 @@ public class MainForm : Form
         _chkAutoDate.Text    = "自動從檔名/單號推算";
         _chkAutoDate.SetBounds(P + 258, y + 1, 180, 24);
         _chkAutoDate.Checked = true;
-        _chkAutoDate.CheckedChanged += (_, _) => _dtpOrderDate.Enabled = !_chkAutoDate.Checked;
+        _chkAutoDate.CheckedChanged += (_, _) => _dtpOrderDate.Enabled = !_chkAutoDate.Checked && !_progress.Visible;
         y += 38;
 
         var sep = new Panel
         {
-            Left = P, Top = y, Height = 1, BackColor = Color.LightGray,
+            Left = P, Top = y, Height = 1, BackColor = BorderGray,
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top,
         };
         y += 10;
@@ -178,9 +268,7 @@ public class MainForm : Form
         _btnGenerate.Text      = "產生 PDF";
         _btnGenerate.SetBounds(P, y, 120, 36);
         _btnGenerate.Font      = new Font(_btnGenerate.Font, FontStyle.Bold);
-        _btnGenerate.BackColor = Color.FromArgb(32, 84, 147);
-        _btnGenerate.ForeColor = Color.White;
-        _btnGenerate.FlatStyle = FlatStyle.Flat;
+        StyleButton(_btnGenerate, primary: true);
         _btnGenerate.Enabled   = false;
         _btnGenerate.Click    += BtnGenerate_Click;
 
@@ -196,7 +284,7 @@ public class MainForm : Form
 
         _lblStatus.SetBounds(P, y, 0, 40);
         _lblStatus.Text      = "請先選擇 Excel 檔案，或將 .xlsx 拖放至視窗。";
-        _lblStatus.ForeColor = Color.DimGray;
+        _lblStatus.ForeColor = TextMuted;
         _lblStatus.Anchor    = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
         y += 44;
 
@@ -214,6 +302,7 @@ public class MainForm : Form
         _dgvErrors.SelectionMode        = DataGridViewSelectionMode.FullRowSelect;
         _dgvErrors.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _dgvErrors.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
+        StyleGrid(_dgvErrors);
         _dgvErrors.Columns.Add(new DataGridViewTextBoxColumn { Name = "OrderNo", HeaderText = "訂購單號", Width = 120 });
         _dgvErrors.Columns.Add(new DataGridViewTextBoxColumn { Name = "Field",   HeaderText = "欄位",     Width = 100 });
         _dgvErrors.Columns.Add(new DataGridViewTextBoxColumn
@@ -251,12 +340,14 @@ public class MainForm : Form
     TabPage BuildTab2()
     {
         var page = new TabPage("檢核設定") { Padding = new Padding(10) };
+        StylePage(page);
         const int P = 12;
 
         var lbl = new Label
         {
-            Text  = "設定訂單資料的檢核規則（可新增/刪除列、勾選啟用）：",
+            Text  = "設定訂單資料的檢核規則（選欄位與檢核方式即可）：",
             Left  = P, Top = P, Width = 650, Height = 22,
+            ForeColor = TextMuted,
         };
 
         _dgvRules.SetBounds(P, P + 26, 0, 0);
@@ -265,6 +356,7 @@ public class MainForm : Form
         _dgvRules.EditMode              = DataGridViewEditMode.EditOnEnter;
         _dgvRules.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _dgvRules.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
+        StyleGrid(_dgvRules);
 
         _dgvRules.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "啟用", Width = 50 });
 
@@ -272,16 +364,28 @@ public class MainForm : Form
         foreach (var f in ValidationService.KnownFields) colField.Items.Add(f);
         _dgvRules.Columns.Add(colField);
 
-        var colType = new DataGridViewComboBoxColumn { Name = "RuleType", HeaderText = "規則類型", Width = 130, FlatStyle = FlatStyle.Flat };
-        colType.Items.AddRange("必填", "格式驗證（正則）", "最大長度");
+        var colType = new DataGridViewComboBoxColumn
+        {
+            Name = "RuleType",
+            HeaderText = "檢核方式",
+            Width = 170,
+            FlatStyle = FlatStyle.Flat,
+        };
+        colType.Items.AddRange(RuleChoices.Cast<object>().ToArray());
         _dgvRules.Columns.Add(colType);
 
-        _dgvRules.Columns.Add(new DataGridViewTextBoxColumn { Name = "Parameter", HeaderText = "參數（正則/長度）", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
-        _dgvRules.Columns.Add(new DataGridViewTextBoxColumn { Name = "Message",   HeaderText = "錯誤訊息", Width = 180 });
+        _dgvRules.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Message",
+            HeaderText = "提示訊息",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+        });
 
         _btnSaveRules.Text   = "儲存設定";
         _btnResetRules.Text  = "還原預設值";
         _btnSaveRules.Size   = _btnResetRules.Size = new Size(110, 30);
+        StyleButton(_btnSaveRules, primary: true);
+        StyleButton(_btnResetRules);
         _btnSaveRules.Click  += BtnSaveRules_Click;
         _btnResetRules.Click += BtnResetRules_Click;
 
@@ -307,11 +411,12 @@ public class MainForm : Form
     TabPage BuildTab3()
     {
         var page = new TabPage("PDF 樣式設定") { Padding = new Padding(10) };
+        StylePage(page);
         const int P    = 12;
         const int LblW = Tab3LblW;
         const int Pad  = Tab3Pad;
 
-        var scroll = new Panel { Left = P, Top = P, AutoScroll = true };
+        var scroll = new Panel { Left = P, Top = P, AutoScroll = true, BackColor = AppBack };
         scroll.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
         _tab3ScrollPanel = scroll;
 
@@ -321,36 +426,48 @@ public class MainForm : Form
         int y = 0;
 
         // ---- "一般設定" GroupBox ----
-        var gbGeneral = new GroupBox { Text = "一般設定", Left = 0, Top = y, Width = 680, Height = 112 };
-        _chkAutoSaveDir.Text = "PDF 自動存於 Excel 同目錄（不顯示存檔對話框）";
-        _chkAutoSaveDir.SetBounds(Pad, 22, 440, 24);
-        var lblPdfDir = new Label
+        var gbGeneral = new GroupBox { Text = "一般設定", Left = 0, Top = y, Width = 680, Height = 146 };
+        StyleGroupBox(gbGeneral);
+        var lblOutputMode = new Label
         {
-            Text = "預設儲存目錄：", Left = Pad, Top = 50, Width = LblW, Height = 26,
+            Text = "輸出位置：", Left = Pad, Top = 24, Width = LblW, Height = 24,
             TextAlign = ContentAlignment.MiddleRight,
         };
-        _txtDefaultPdfDir.SetBounds(Pad + LblW + 4, 50, 350, 26);
+        _rdoOutputExcelDir.Text = "Excel 同目錄";
+        _rdoOutputExcelDir.SetBounds(Pad + LblW + 4, 24, 110, 24);
+        _rdoOutputDefaultDir.Text = "固定預設目錄";
+        _rdoOutputDefaultDir.SetBounds(Pad + LblW + 120, 24, 125, 24);
+        _rdoOutputAsk.Text = "每次詢問";
+        _rdoOutputAsk.SetBounds(Pad + LblW + 254, 24, 100, 24);
+        var lblPdfDir = new Label
+        {
+            Text = "預設儲存目錄：", Left = Pad, Top = 58, Width = LblW, Height = 26,
+            TextAlign = ContentAlignment.MiddleRight,
+        };
+        _txtDefaultPdfDir.SetBounds(Pad + LblW + 4, 58, 350, 26);
         _btnBrowsePdfDir.Text = "瀏覽…";
-        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 330, 50, 80, 26);
+        _btnBrowsePdfDir.SetBounds(Pad + LblW + 4 + 330, 58, 80, 26);
+        StyleButton(_btnBrowsePdfDir);
         _btnBrowsePdfDir.Click += BtnBrowsePdfDir_Click;
         var lblMaxRows = new Label
         {
-            Text = "每頁最多筆數：", Left = Pad, Top = 80, Width = LblW, Height = 22,
+            Text = "每頁最多筆數：", Left = Pad, Top = 96, Width = LblW, Height = 22,
             TextAlign = ContentAlignment.MiddleRight,
         };
-        _nudMaxRows.SetBounds(Pad + LblW + 4, 80, 70, 22);
+        _nudMaxRows.SetBounds(Pad + LblW + 4, 96, 70, 22);
         _nudMaxRows.Minimum  = 1;
         _nudMaxRows.Maximum  = 99;
         _nudMaxRows.Value    = 10;
         var lblMaxRowsHint = new Label
         {
             Text = "筆（預設 10，超長品名時實際筆數可能略少）",
-            Left = Pad + LblW + 4 + 74, Top = 80, Width = 320, Height = 22,
-            TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray,
+            Left = Pad + LblW + 4 + 74, Top = 96, Width = 320, Height = 22,
+            TextAlign = ContentAlignment.MiddleLeft, ForeColor = TextMuted,
         };
         gbGeneral.Controls.AddRange(new Control[]
         {
-            _chkAutoSaveDir, lblPdfDir, _txtDefaultPdfDir, _btnBrowsePdfDir,
+            lblOutputMode, _rdoOutputExcelDir, _rdoOutputDefaultDir, _rdoOutputAsk,
+            lblPdfDir, _txtDefaultPdfDir, _btnBrowsePdfDir,
             lblMaxRows, _nudMaxRows, lblMaxRowsHint,
         });
         scroll.Controls.Add(gbGeneral);
@@ -366,6 +483,9 @@ public class MainForm : Form
                 TextAlign = ContentAlignment.MiddleRight,
             };
             var tb = new TextBox { Left = Pad + LblW + 4, Top = gy, Width = 400, Height = 26 };
+            tb.BorderStyle = BorderStyle.FixedSingle;
+            tb.BackColor = Color.White;
+            tb.ForeColor = TextStrong;
             _hsFields[key] = tb;
             gb.Controls.Add(lbl);
             gb.Controls.Add(tb);
@@ -374,6 +494,7 @@ public class MainForm : Form
 
         // ---- "標題" GroupBox ----
         var gbTitle = new GroupBox { Text = "標題", Left = 0, Top = y, Width = 680 };
+        StyleGroupBox(gbTitle);
         int gy = 22;
         AddField(gbTitle, "HospitalName", "醫院名稱（標題大字）", ref gy);
         AddField(gbTitle, "FormTitle",    "表單標題",             ref gy);
@@ -384,6 +505,7 @@ public class MainForm : Form
 
         // ---- "發票/法規資訊" GroupBox ----
         var gbInvoice = new GroupBox { Text = "發票/法規資訊", Left = 0, Top = y, Width = 680 };
+        StyleGroupBox(gbInvoice);
         gy = 22;
         AddField(gbInvoice, "InvoiceHeader",  "發票抬頭",     ref gy);
         AddField(gbInvoice, "InvoiceAddress", "發票地址",     ref gy);
@@ -397,6 +519,7 @@ public class MainForm : Form
 
         // ---- "交貨與備註" GroupBox ----
         var gbDelivery = new GroupBox { Text = "交貨與備註", Left = 0, Top = y, Width = 680 };
+        StyleGroupBox(gbDelivery);
         gy = 22;
         AddField(gbDelivery, "DeliveryAddress", "交貨地址", ref gy);
         AddField(gbDelivery, "DeliveryNote",    "交貨備注", ref gy);
@@ -415,6 +538,8 @@ public class MainForm : Form
         _btnResetHospital.Text  = "還原預設值";
         _btnSaveHospital.SetBounds(Pad, y, 120, 30);
         _btnResetHospital.SetBounds(Pad + 128, y, 120, 30);
+        StyleButton(_btnSaveHospital, primary: true);
+        StyleButton(_btnResetHospital);
         _btnSaveHospital.Click  += BtnSaveHospital_Click;
         _btnResetHospital.Click += BtnResetHospital_Click;
         scroll.Controls.Add(_btnSaveHospital);
@@ -451,7 +576,7 @@ public class MainForm : Form
     {
         _dgvRules.Rows.Clear();
         foreach (var r in _validationConfig.Rules)
-            _dgvRules.Rows.Add(r.Enabled, r.Field, RuleTypeToDisplay(r.RuleType), r.Parameter, r.Message);
+            _dgvRules.Rows.Add(r.Enabled, r.Field, RuleTypeToDisplay(r), r.Message);
     }
 
     void BindHospitalFields()
@@ -469,9 +594,34 @@ public class MainForm : Form
 
     void BindGeneralSettings()
     {
-        _chkAutoSaveDir.Checked = _generalSettings.AutoSaveSameDir;
+        var mode = ResolveOutputMode(_generalSettings);
+        _rdoOutputExcelDir.Checked = mode == PdfOutputMode.ExcelDirectory;
+        _rdoOutputDefaultDir.Checked = mode == PdfOutputMode.DefaultDirectory;
+        _rdoOutputAsk.Checked = mode == PdfOutputMode.AskEveryTime;
         _txtDefaultPdfDir.Text  = _generalSettings.DefaultPdfDirectory ?? "";
         _nudMaxRows.Value       = Math.Clamp(_generalSettings.MaxRowsPerPage, 1, 99);
+        UpdateOutputDirectoryControls();
+    }
+
+    static PdfOutputMode ResolveOutputMode(GeneralSettings settings)
+    {
+        if (settings.PdfOutputMode != default || settings.AutoSaveSameDir)
+            return settings.PdfOutputMode;
+        return PdfOutputMode.AskEveryTime;
+    }
+
+    PdfOutputMode SelectedOutputMode()
+    {
+        if (_rdoOutputDefaultDir.Checked) return PdfOutputMode.DefaultDirectory;
+        if (_rdoOutputAsk.Checked) return PdfOutputMode.AskEveryTime;
+        return PdfOutputMode.ExcelDirectory;
+    }
+
+    void UpdateOutputDirectoryControls()
+    {
+        bool enabled = _rdoOutputDefaultDir.Checked;
+        _txtDefaultPdfDir.Enabled = enabled;
+        _btnBrowsePdfDir.Enabled = enabled;
     }
 
     void Set(string key, string val)    { if (_hsFields.TryGetValue(key, out var tb)) tb.Text = val; }
@@ -489,21 +639,90 @@ public class MainForm : Form
         Note3 = Get("Note3"), Note4 = Get("Note4"),
     };
 
+    GeneralSettings ReadGeneralFromUI() => new()
+    {
+        LastExcelDirectory = _generalSettings.LastExcelDirectory,
+        PdfOutputMode = SelectedOutputMode(),
+        AutoSaveSameDir = SelectedOutputMode() != PdfOutputMode.AskEveryTime,
+        DefaultPdfDirectory = string.IsNullOrWhiteSpace(_txtDefaultPdfDir.Text)
+            ? null
+            : _txtDefaultPdfDir.Text.Trim(),
+        MaxRowsPerPage = (int)_nudMaxRows.Value,
+    };
+
+    static string RuleTypeToDisplay(ValidationRule rule)
+    {
+        if (rule.RuleType == RuleType.Regex)
+        {
+            string p = rule.Parameter.Trim();
+            if (p is @"^\d+(\.\d+)?$" or @"^\d+(\.\d+)?") return "必須是數字";
+            if (p is @"^\d+$") return "必須是整數";
+            if (p is @"^\d{8}$") return "統一編號 8 碼";
+            if (p is @"^[0-9#()\-\.\s+]+$") return "電話/傳真格式";
+        }
+        return RuleTypeToDisplay(rule.RuleType);
+    }
+
     static string RuleTypeToDisplay(RuleType rt) => rt switch
     {
-        RuleType.Required  => "必填",
-        RuleType.Regex     => "格式驗證（正則）",
-        RuleType.MaxLength => "最大長度",
-        _                  => rt.ToString(),
+        RuleType.Required        => "必填",
+        RuleType.Number          => "必須是數字",
+        RuleType.PositiveNumber  => "必須大於 0",
+        RuleType.Integer         => "必須是整數",
+        RuleType.PositiveInteger => "必須是正整數",
+        RuleType.NotZero         => "不可為 0",
+        RuleType.PhoneFax        => "電話/傳真格式",
+        RuleType.TaxId8          => "統一編號 8 碼",
+        RuleType.MaxLength20     => "長度不超過 20 字",
+        RuleType.MaxLength50     => "長度不超過 50 字",
+        RuleType.MaxLength100    => "長度不超過 100 字",
+        RuleType.MaxLength       => "長度不超過 100 字",
+        RuleType.Regex           => "必須是數字",
+        _                        => "必填",
     };
 
     static RuleType DisplayToRuleType(string s) => s switch
     {
-        "必填"            => RuleType.Required,
-        "格式驗證（正則）" => RuleType.Regex,
-        "最大長度"        => RuleType.MaxLength,
-        _                 => Enum.TryParse<RuleType>(s, out var rt) ? rt : RuleType.Required,
+        "必填"              => RuleType.Required,
+        "必須是數字"        => RuleType.Number,
+        "必須大於 0"        => RuleType.PositiveNumber,
+        "必須是整數"        => RuleType.Integer,
+        "必須是正整數"      => RuleType.PositiveInteger,
+        "不可為 0"          => RuleType.NotZero,
+        "電話/傳真格式"     => RuleType.PhoneFax,
+        "統一編號 8 碼"     => RuleType.TaxId8,
+        "長度不超過 20 字"  => RuleType.MaxLength20,
+        "長度不超過 50 字"  => RuleType.MaxLength50,
+        "長度不超過 100 字" => RuleType.MaxLength100,
+        _                   => Enum.TryParse<RuleType>(s, out var rt) ? rt : RuleType.Required,
     };
+
+    void ApplyDefaultRuleMessage(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _dgvRules.Rows.Count) return;
+        var row = _dgvRules.Rows[rowIndex];
+        if (row.IsNewRow) return;
+
+        string field = row.Cells["Field"].Value?.ToString() ?? "";
+        string typeStr = row.Cells["RuleType"].Value?.ToString() ?? "";
+        string current = row.Cells["Message"].Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(typeStr)) return;
+
+        var newMessage = ValidationService.DefaultMessage(field, DisplayToRuleType(typeStr));
+        if (string.IsNullOrWhiteSpace(current) || IsKnownDefaultMessage(current))
+        {
+            _suspendDirtyTracking = true;
+            row.Cells["Message"].Value = newMessage;
+            _suspendDirtyTracking = false;
+            _rulesDirty = true;
+        }
+    }
+
+    static bool IsKnownDefaultMessage(string message)
+        => ValidationService.KnownFields.Any(field =>
+            RuleChoices.Any(choice =>
+                string.Equals(message, ValidationService.DefaultMessage(field, DisplayToRuleType(choice)),
+                    StringComparison.Ordinal)));
 
     void SetStatus(string msg, bool success = false, bool error = false)
     {
@@ -515,9 +734,30 @@ public class MainForm : Form
     {
         _btnGenerate.Enabled    = !busy;
         _btnSelectExcel.Enabled = !busy;
+        _btnExportSample.Enabled = !busy;
+        _chkSplitByVendor.Enabled = !busy;
+        _chkAutoDate.Enabled = !busy;
+        _dtpOrderDate.Enabled = !busy && !_chkAutoDate.Checked;
+        _dgvRules.Enabled = !busy;
+        _btnSaveRules.Enabled = !busy;
+        _btnResetRules.Enabled = !busy;
+        SetSettingsControlsEnabled(!busy);
         _progress.Visible       = busy;
         _progress.Style         = busy ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
         if (msg != null) SetStatus(msg);
+    }
+
+    void SetSettingsControlsEnabled(bool enabled)
+    {
+        _rdoOutputExcelDir.Enabled = enabled;
+        _rdoOutputDefaultDir.Enabled = enabled;
+        _rdoOutputAsk.Enabled = enabled;
+        _txtDefaultPdfDir.Enabled = enabled && _rdoOutputDefaultDir.Checked;
+        _btnBrowsePdfDir.Enabled = enabled && _rdoOutputDefaultDir.Checked;
+        _nudMaxRows.Enabled = enabled;
+        _btnSaveHospital.Enabled = enabled;
+        _btnResetHospital.Enabled = enabled;
+        foreach (var tb in _hsFields.Values) tb.Enabled = enabled;
     }
 
     // ============================================================
@@ -628,6 +868,61 @@ public class MainForm : Form
         }
     }
 
+    string? GetOutputDirectory(string excelPath, GeneralSettings settings, string title)
+    {
+        string excelDir = Path.GetDirectoryName(excelPath)
+                          ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+        if (settings.PdfOutputMode == PdfOutputMode.ExcelDirectory)
+            return excelDir;
+
+        if (settings.PdfOutputMode == PdfOutputMode.DefaultDirectory
+            && !string.IsNullOrWhiteSpace(settings.DefaultPdfDirectory))
+            return settings.DefaultPdfDirectory;
+
+        using var dirDlg = new FolderBrowserDialog
+        {
+            Description            = title,
+            UseDescriptionForTitle = true,
+            SelectedPath           = !string.IsNullOrWhiteSpace(settings.DefaultPdfDirectory)
+                                     ? settings.DefaultPdfDirectory
+                                     : excelDir,
+        };
+        return dirDlg.ShowDialog(this) == DialogResult.OK ? dirDlg.SelectedPath : null;
+    }
+
+    string? GetSinglePdfSavePath(string excelPath, GeneralSettings settings)
+    {
+        string fileName = Path.GetFileNameWithoutExtension(excelPath) + "_訂購單.pdf";
+        if (settings.PdfOutputMode == PdfOutputMode.AskEveryTime)
+        {
+            string initDir = !string.IsNullOrWhiteSpace(settings.DefaultPdfDirectory)
+                             ? settings.DefaultPdfDirectory
+                             : Path.GetDirectoryName(excelPath)
+                               ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            using var saveDlg = new SaveFileDialog
+            {
+                Title            = "儲存 PDF",
+                Filter           = "PDF 文件 (*.pdf)|*.pdf",
+                FileName         = fileName,
+                DefaultExt       = "pdf",
+                OverwritePrompt  = true,
+                InitialDirectory = initDir,
+            };
+            return saveDlg.ShowDialog(this) == DialogResult.OK ? saveDlg.FileName : null;
+        }
+
+        var dir = GetOutputDirectory(excelPath, settings, "選擇 PDF 輸出目錄");
+        return dir == null ? null : Path.Combine(dir, fileName);
+    }
+
+    void EnsureOutputDirectory(string filePath)
+    {
+        string? dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(dir))
+            Directory.CreateDirectory(dir);
+    }
+
     async void BtnGenerate_Click(object? sender, EventArgs e)
     {
         if (_excelPath is null) return;
@@ -719,32 +1014,16 @@ public class MainForm : Form
             orderDate = _dtpOrderDate.Value.ToString("yyyy-MM-dd");
         }
 
+        var hospitalSnap = ReadHospitalFromUI();
+        var generalSnap  = ReadGeneralFromUI();
+        int maxRowsSnap  = generalSnap.MaxRowsPerPage;
+
         // ---- 分廠商輸出 mode ----
         if (_chkSplitByVendor.Checked)
         {
-            string splitDir;
-            if (_generalSettings.AutoSaveSameDir)
-            {
-                splitDir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
-                           ? _generalSettings.DefaultPdfDirectory
-                           : Path.GetDirectoryName(excelPath) ?? "";
-            }
-            else
-            {
-                string initDir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
-                                 ? _generalSettings.DefaultPdfDirectory
-                                 : Path.GetDirectoryName(excelPath) ?? "";
-                using var dirDlg = new FolderBrowserDialog
-                {
-                    Description            = "選擇分廠商 PDF 的輸出目錄",
-                    UseDescriptionForTitle = true,
-                    SelectedPath           = initDir,
-                };
-                if (dirDlg.ShowDialog(this) != DialogResult.OK) return;
-                splitDir = dirDlg.SelectedPath;
-            }
+            string? splitDir = GetOutputDirectory(excelPath, generalSnap, "選擇分廠商 PDF 的輸出目錄");
+            if (splitDir == null) return;
 
-            var    hospSnap2 = _hospitalSettings;
             var    ordSnap2  = orders!;
             string dateSnap2 = orderDate;
             string stem2     = Path.GetFileNameWithoutExtension(excelPath);
@@ -755,8 +1034,8 @@ public class MainForm : Form
             try
             {
                 splitFiles = await Task.Run(() =>
-                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospSnap2,
-                        _generalSettings.MaxRowsPerPage));
+                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospitalSnap,
+                        maxRowsSnap));
             }
             catch (Exception ex) { splitErr = ex.Message; }
             finally { SetBusy(false); }
@@ -785,33 +1064,9 @@ public class MainForm : Form
         }
 
         // Step 5: Determine save path (H7)
-        string savePath;
-        if (_generalSettings.AutoSaveSameDir)
-        {
-            string dir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
-                         ? _generalSettings.DefaultPdfDirectory
-                         : Path.GetDirectoryName(excelPath) ?? "";
-            savePath = Path.Combine(dir, Path.GetFileNameWithoutExtension(excelPath) + "_訂購單.pdf");
-        }
-        else
-        {
-            string initDir = !string.IsNullOrWhiteSpace(_generalSettings.DefaultPdfDirectory)
-                             ? _generalSettings.DefaultPdfDirectory
-                             : Path.GetDirectoryName(excelPath) ?? "";
-            using var saveDlg = new SaveFileDialog
-            {
-                Title            = "儲存 PDF",
-                Filter           = "PDF 文件 (*.pdf)|*.pdf",
-                FileName         = Path.GetFileNameWithoutExtension(excelPath) + "_訂購單.pdf",
-                DefaultExt       = "pdf",
-                OverwritePrompt  = true,
-                InitialDirectory = initDir,
-            };
-            if (saveDlg.ShowDialog(this) != DialogResult.OK) return;
-            savePath = saveDlg.FileName;
-        }
-
-        var hospitalSnap = _hospitalSettings;
+        string? savePathMaybe = GetSinglePdfSavePath(excelPath, generalSnap);
+        if (savePathMaybe == null) return;
+        string savePath = savePathMaybe;
         var ordersSnap   = orders;
         var dateSnap     = orderDate;
 
@@ -833,7 +1088,8 @@ public class MainForm : Form
                 {
                     using (var pdfStream = File.Create(tempPath))
                         PdfGenerator.BuildPdf(ordersSnap, pdfStream, dateSnap, hospitalSnap,
-                            _generalSettings.MaxRowsPerPage);
+                            maxRowsSnap);
+                    EnsureOutputDirectory(savePath);
                     File.Move(tempPath, savePath, overwrite: true);
                     int vc = ordersSnap.Select(o => o.Vendor).Distinct().Count();
                     return (ordersSnap.Count, dateSnap, vc);
@@ -902,16 +1158,18 @@ public class MainForm : Form
             var enabled = row.Cells["Enabled"].Value is true;
             var field   = row.Cells["Field"].Value?.ToString()    ?? "";
             var typeStr = row.Cells["RuleType"].Value?.ToString()  ?? "必填";
-            var param   = row.Cells["Parameter"].Value?.ToString() ?? "";
             var msg     = row.Cells["Message"].Value?.ToString()   ?? "";
             if (string.IsNullOrWhiteSpace(field)) continue;
+            var ruleType = DisplayToRuleType(typeStr);
             rules.Add(new ValidationRule
             {
                 Enabled   = enabled,
                 Field     = field,
-                RuleType  = DisplayToRuleType(typeStr),
-                Parameter = param,
-                Message   = msg,
+                RuleType  = ruleType,
+                Parameter = "",
+                Message   = string.IsNullOrWhiteSpace(msg)
+                    ? ValidationService.DefaultMessage(field, ruleType)
+                    : msg,
             });
         }
         _validationConfig = new ValidationConfig { Rules = rules };
@@ -941,7 +1199,8 @@ public class MainForm : Form
     void SaveCurrentSettings(bool silent = false)
     {
         _hospitalSettings                    = ReadHospitalFromUI();
-        _generalSettings.AutoSaveSameDir     = _chkAutoSaveDir.Checked;
+        _generalSettings.PdfOutputMode       = SelectedOutputMode();
+        _generalSettings.AutoSaveSameDir     = _generalSettings.PdfOutputMode != PdfOutputMode.AskEveryTime;
         _generalSettings.DefaultPdfDirectory = string.IsNullOrWhiteSpace(_txtDefaultPdfDir.Text)
                                                ? null
                                                : _txtDefaultPdfDir.Text.Trim();

@@ -1,125 +1,39 @@
-# Order Helper - Azure 部署
+# OrderHelper - WinForms 發佈
 
-Azure App Service Linux，Python 3.12。以下指令以 Windows PowerShell 為主。
+本專案目前以 .NET 8 WinForms 桌面程式為主，不再部署到 Azure App Service。
 
-## 目前 Azure 目標
+## 目前發佈方式
 
-```text
-Resource group: orderhelper
-App Service plan: asp-orderhelper-prod
-Web App: app-orderhelper
-Runtime: PYTHON|3.12
-Region: East Asia
-URL: https://app-orderhelper.azurewebsites.net
-```
+- 目標平台：Windows 10 / 11 x64
+- 輸出型態：單一 self-contained `.exe`
+- 專案檔：`OrderHelperWinForms/OrderHelperWinForms.csproj`
+- 發佈設定：`OrderHelperWinForms/Properties/PublishProfiles/SingleFile.pubxml`
+- 輸出位置：`OrderHelperWinForms/bin/Publish/OrderHelper.exe`
 
-目前 App Service 已連到 GitHub Actions：
+## 本機發佈
 
-```text
-Repository: https://github.com/ed100084/orderhelper
-Branch: main
-Workflow: .github/workflows/main_app-orderhelper.yml
-```
-
-## 字型檔
-
-App Service Linux 不要依賴 `apt install` 安裝 PDF 字型。專案把 Noto Sans TC 字型放在 `fonts/`，部署時會跟著應用程式一起上傳：
-
-```text
-fonts/NotoSansTC-Bold.ttf
-fonts/NotoSansTC-Regular.otf
-fonts/NotoSansTC-Regular.ttf
-fonts/NotoSansTC-VariableFont_wght.ttf
-```
-
-程式會先檢查 `ORDERHELPER_FONT_PATH`，再依序使用 repo 內的字型檔，最後才檢查本機 OS fallback 路徑。
-
-## 必要 App Settings
+需要 .NET 8 SDK。
 
 ```powershell
-az webapp config appsettings set `
-  --resource-group orderhelper `
-  --name app-orderhelper `
-  --settings `
-    SCM_DO_BUILD_DURING_DEPLOYMENT=True `
-    MAX_UPLOAD_BYTES=15728640
+dotnet publish OrderHelperWinForms/OrderHelperWinForms.csproj /p:PublishProfile=SingleFile
 ```
 
-`SCM_DO_BUILD_DURING_DEPLOYMENT=True` 很重要。GitHub Actions artifact 會排除本機 `antenv/`，所以 Azure 必須在部署時跑 Oryx，依照 `requirements.txt` 建立 runtime 套件環境。
+發佈完成後，把整個 `OrderHelperWinForms/bin/Publish/` 目錄交付給使用者。目錄內包含主程式與 WebView2 相關檔案。
 
-如果要明確指定字型，可以加：
+## GitHub Actions
 
-```powershell
-az webapp config appsettings set `
-  --resource-group orderhelper `
-  --name app-orderhelper `
-  --settings ORDERHELPER_FONT_PATH=/home/site/wwwroot/fonts/NotoSansTC-Bold.ttf
-```
+`.github/workflows/main_app-orderhelper.yml` 已改為只建置並發佈 WinForms 桌面版 artifact：
 
-## 啟動指令
+- 使用 `windows-latest`
+- 還原 NuGet 套件
+- Release build
+- 依 `SingleFile.pubxml` 產生 win-x64 self-contained exe
+- 上傳 `OrderHelper-win-x64` artifact
 
-```powershell
-az webapp config set `
-  --resource-group orderhelper `
-  --name app-orderhelper `
-  --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker --timeout 120 -b 0.0.0.0:8000 app:app"
-```
+此 workflow 不再包含 Azure login、Azure Web App deploy，push 到 `main` 不會部署到 Azure。
 
-App 監聽 `8000`，符合目前 App Service Python image 預設值。
+## Azure 狀態
 
-## 部署
+舊版 Python FastAPI / Azure App Service 部署已停用於 CI。若 Azure Portal 仍保留 Deployment Center 或 GitHub 連線，建議在 Portal 端也移除或停用，避免平台端設定自行觸發同步。
 
-日常部署走 GitHub Actions：
-
-```powershell
-git push origin main
-```
-
-GitHub Actions 還在部署時，不要同時跑 `az webapp up`、Portal Deployment Center 操作、改 App Settings、restart、或手動 zip deploy。這些管理操作可能讓 SCM container 重啟，造成部署只完成一半，最後 runtime 找不到 `uvicorn` 或其他 Python 套件。
-
-如果要手動觸發 Azure 目前 GitHub source connection 重新同步：
-
-```powershell
-az webapp deployment source sync `
-  --resource-group orderhelper `
-  --name app-orderhelper
-```
-
-## 驗證
-
-```powershell
-Invoke-RestMethod -Uri https://app-orderhelper.azurewebsites.net/health
-```
-
-預期回應：
-
-```json
-{"status":"ok"}
-```
-
-如果網站啟動失敗，log 出現 `ModuleNotFoundError: No module named 'uvicorn'`，代表該次部署沒有完成 Oryx dependency build。先等目前部署完全結束，再重新部署一次。
-
-## 日常維護
-
-| 動作 | 指令 |
-|---|---|
-| 查看 app config | `az webapp config show -g orderhelper -n app-orderhelper` |
-| 查看 app settings | `az webapp config appsettings list -g orderhelper -n app-orderhelper` |
-| 看 log | `az webapp log tail -g orderhelper -n app-orderhelper` |
-| 重啟 | `az webapp restart -g orderhelper -n app-orderhelper` |
-| SSH | `az webapp ssh -g orderhelper -n app-orderhelper` |
-| 健康檢查 | `Invoke-RestMethod -Uri https://app-orderhelper.azurewebsites.net/health` |
-
-## 認證
-
-應用程式本身尚未實作登入。對外使用前，建議用 Azure App Service Authentication：
-
-Portal -> Web App -> Authentication -> Add identity provider -> Microsoft -> Single tenant -> Require authentication -> Save.
-
-之後可限制特定使用者或 security group 存取。
-
-## 後續可加
-
-- 加 staging slot，再做 production swap。
-- 加 Application Insights 或 Log Analytics。
-- 在 GitHub Actions 增加部署後 `/health` 檢查。
+舊版 Web 入口仍保留於 `app.py`，目前只作為歷史原型或備援參考，不是主要發佈目標。
