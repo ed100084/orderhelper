@@ -65,7 +65,7 @@ public static class PdfGenerator
         string? orderDate = null,
         HospitalSettings? hospital = null,
         string? sheetName = null,
-        int maxRowsPerPage = 10,
+        int maxRowsPerPage = 12,
         bool nextMonthInvoice = false)
     {
         var orders = ExcelReader.ReadOrders(excelSource, sheetName);
@@ -88,7 +88,7 @@ public static class PdfGenerator
         Stream pdfOutput,
         string orderDate,
         HospitalSettings? hospital = null,
-        int maxRowsPerPage = 10,
+        int maxRowsPerPage = 12,
         bool nextMonthInvoice = false)
     {
         if (orders.Count == 0)
@@ -105,7 +105,7 @@ public static class PdfGenerator
     // Core PDF builder
     // -------------------------------------------------------
     static void BuildPdfFromOrders(List<OrderRow> orders, Stream output, string orderDate,
-                                   HospitalSettings hs, int maxRowsPerPage = 10,
+                                   HospitalSettings hs, int maxRowsPerPage = 12,
                                    bool nextMonthInvoice = false)
     {
         using var writer  = new PdfWriter(output);
@@ -134,7 +134,7 @@ public static class PdfGenerator
     // -------------------------------------------------------
     // Vendor grouping & pagination  (mirrors app.py logic)
     // -------------------------------------------------------
-    static List<VendorPage> BuildVendorPages(List<OrderRow> orders, int maxRowsPerPage = 10)
+    static List<VendorPage> BuildVendorPages(List<OrderRow> orders, int maxRowsPerPage = 12)
     {
         // Group by vendor, preserving insertion order
         var grouped = new Dictionary<string, List<OrderRow>>();
@@ -170,7 +170,7 @@ public static class PdfGenerator
         return pages;
     }
 
-    static List<List<OrderRow>> PaginateVendorOrders(List<OrderRow> orders, int maxRowsPerPage = 10)
+    static List<List<OrderRow>> PaginateVendorOrders(List<OrderRow> orders, int maxRowsPerPage = 12)
     {
         float capacity = DETAIL_TOP - 58.0f; // usable body height (DETAIL_BOTTOM = 58 pt)
         var pages    = new List<List<OrderRow>>();
@@ -499,7 +499,7 @@ public static class PdfGenerator
         string orderDate,
         string inputStem,
         HospitalSettings? hospital = null,
-        int maxRowsPerPage = 10,
+        int maxRowsPerPage = 12,
         bool nextMonthInvoice = false)
     {
         if (orders.Count == 0)
@@ -520,6 +520,12 @@ public static class PdfGenerator
             string safeName = SanitizeFileName(vendor);
             string fileName = $"{index:D3}_{inputStem}_{safeName}_訂購單.pdf";
             string filePath = System.IO.Path.Combine(outputDir, fileName);
+
+            // Same-day reruns for the same vendor (e.g. a second batch processed
+            // later in the day) must not clobber the earlier PDF; append -1, -2, ...
+            // Next-month-invoice batches are exempt since they're one-off runs.
+            if (!nextMonthInvoice)
+                filePath = NextAvailablePath(filePath);
 
             using var writer = new PdfWriter(filePath);
             using var pdfDoc = new PdfDocument(writer);
@@ -548,5 +554,24 @@ public static class PdfGenerator
     {
         var invalid = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars());
         return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
+    }
+
+    static string NextAvailablePath(string filePath)
+    {
+        if (!File.Exists(filePath)) return filePath;
+
+        string dir  = System.IO.Path.GetDirectoryName(filePath) ?? "";
+        string stem = System.IO.Path.GetFileNameWithoutExtension(filePath);
+        string ext  = System.IO.Path.GetExtension(filePath);
+
+        int n = 1;
+        string candidate;
+        do
+        {
+            candidate = System.IO.Path.Combine(dir, $"{stem}-{n}{ext}");
+            n++;
+        } while (File.Exists(candidate));
+
+        return candidate;
     }
 }

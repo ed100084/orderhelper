@@ -453,7 +453,7 @@ public class MainForm : Form
         _nudMaxRows.SetBounds(Pad + LblW + 4, 96, 70, 22);
         _nudMaxRows.Minimum  = 1;
         _nudMaxRows.Maximum  = 99;
-        _nudMaxRows.Value    = 10;
+        _nudMaxRows.Value    = 12;
         var lblMaxRowsHint = new Label
         {
             Text = "筆（預設 10，超長品名時實際筆數可能略少）",
