@@ -312,6 +312,10 @@ public static class PdfGenerator
         DrawStr(canvas, font, 14f, 778.0f, 536.7f, "/");
         DrawStr(canvas, font, 14f, 800.8f, 538.2f, totalPages.ToString());
 
+        if (nextMonthInvoice)
+            DrawAlertBadge(canvas, font, 588f, 551.0f, NEXT_MONTH_INVOICE_NOTE,
+                232f, 15f, 12f);
+
         DrawStr(canvas, font, 10f, 28.8f, 535.8f, "報表代碼：INV_APP_07");
 
         // Vendor header row labels
@@ -345,9 +349,6 @@ public static class PdfGenerator
         DrawFitStr (canvas, font, NoteX, 468.2f, hs.Note2, NoteMaxW, 9f, 6f);
         DrawFitStr (canvas, font, NoteX, 457.2f, hs.Note3, NoteMaxW, 9f, 6f);
         DrawFitStr (canvas, font, NoteX, 446.2f, hs.Note4, NoteMaxW, 9f, 6f);
-        if (nextMonthInvoice)
-            DrawFitStrBoldColored(canvas, font, NoteX, 435.2f, NEXT_MONTH_INVOICE_NOTE,
-                NoteMaxW, 13f, 9f, ColorConstants.RED);
 
         // Column headers
         DrawStr(canvas, font, 12f,  30.4f, 417.1f, "序號");
@@ -442,19 +443,34 @@ public static class PdfGenerator
         DrawStr(canvas, font, size, x - w / 2f, y, text);
     }
 
-    static void DrawFitStrBoldColored(PdfCanvas canvas, PdfFont font,
-                                      float x, float y, string text,
-                                      float maxWidth, float fontSize, float minFontSize,
-                                      iText.Kernel.Colors.Color color)
+    static void DrawAlertBadge(PdfCanvas canvas, PdfFont font,
+                               float x, float baseline, string text,
+                               float maxWidth, float fontSize, float minFontSize)
     {
         if (string.IsNullOrEmpty(text)) return;
+
+        const float PadX = 8f;
+        const float PadY = 4f;
         float size = fontSize;
-        while (size > minFontSize && font.GetWidth(text, size) > maxWidth)
+        while (size > minFontSize && font.GetWidth(text, size) + PadX * 2 > maxWidth)
             size -= 0.5f;
-        canvas.SetFillColor(color);
-        DrawStr(canvas, font, size, x, y, text);
-        DrawStr(canvas, font, size, x + 0.35f, y, text);
+
+        float textWidth = font.GetWidth(text, size);
+        float boxWidth = Math.Min(maxWidth, textWidth + PadX * 2);
+        float boxHeight = size + PadY * 2;
+        float boxY = baseline - PadY;
+
+        canvas.SaveState();
+        canvas.SetFillColor(new DeviceRgb(255, 238, 238));
+        canvas.SetStrokeColor(ColorConstants.RED);
+        canvas.SetLineWidth(1.2f);
+        canvas.Rectangle(x, boxY, boxWidth, boxHeight).FillStroke();
+        canvas.SetFillColor(ColorConstants.RED);
+        DrawStr(canvas, font, size, x + PadX, baseline, text);
+        DrawStr(canvas, font, size, x + PadX + 0.35f, baseline, text);
+        canvas.RestoreState();
         canvas.SetFillColor(ColorConstants.BLACK);
+        canvas.SetStrokeColor(ColorConstants.BLACK);
     }
 
     static void DrawFitStr(PdfCanvas canvas, PdfFont font,
@@ -474,7 +490,7 @@ public static class PdfGenerator
 
     /// <summary>
     /// Generates one PDF file per vendor and writes them to <paramref name="outputDir"/>.
-    /// The file name pattern is  {inputStem}_{vendorName}_訂購單.pdf.
+    /// The file name pattern is  {sequence}_{inputStem}_{vendorName}_訂購單.pdf.
     /// Returns a list of (vendorName, filePath) in vendor order.
     /// </summary>
     public static List<(string Vendor, string FilePath)> BuildPdfPerVendor(
@@ -498,11 +514,11 @@ public static class PdfGenerator
 
         Directory.CreateDirectory(outputDir);
 
-        foreach (var vendor in vendorNames)
+        foreach (var (vendor, index) in vendorNames.Select((name, idx) => (name, idx + 1)))
         {
             var vendorPages = allPages.Where(vp => vp.Vendor == vendor).ToList();
             string safeName = SanitizeFileName(vendor);
-            string fileName = $"{inputStem}_{safeName}_訂購單.pdf";
+            string fileName = $"{index:D3}_{inputStem}_{safeName}_訂購單.pdf";
             string filePath = System.IO.Path.Combine(outputDir, fileName);
 
             using var writer = new PdfWriter(filePath);

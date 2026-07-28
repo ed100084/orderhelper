@@ -32,7 +32,6 @@ public class MainForm : Form
 
     // ---- Tab 1 controls ----
     readonly Button         _btnSelectExcel   = new();
-    readonly Button         _btnExportSample  = new();
     readonly Label          _lblExcelPath     = new();
     readonly DateTimePicker _dtpOrderDate     = new();
     readonly CheckBox       _chkAutoDate      = new();
@@ -231,18 +230,6 @@ public class MainForm : Form
         _lblExcelPath.Anchor    = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
         y += 34;
 
-        _btnExportSample.Text      = "匯出範例 Excel…";
-        _btnExportSample.SetBounds(P + 100, y, 160, 26);
-        StyleButton(_btnExportSample);
-        _btnExportSample.ForeColor = Color.FromArgb(22, 101, 52);
-        _btnExportSample.Click    += BtnExportSample_Click;
-        var lblSampleHint = new Label
-        {
-            Text = "下載填寫範本", Left = P + 238, Top = y + 3,
-            Width = 200, Height = 18, ForeColor = TextMuted,
-        };
-        y += 32;
-
         var lblDate = new Label
         {
             Text = "訂貨日期：", Left = P, Top = y, Width = 100, Height = 26,
@@ -278,10 +265,13 @@ public class MainForm : Form
         _chkSplitByVendor.Checked   = false;
 
         _chkNextMonthInvoice.Text      = "請開立下個月發票";
-        _chkNextMonthInvoice.SetBounds(P + 420, y + 6, 210, 24);
+        _chkNextMonthInvoice.SetBounds(P + 420, y + 3, 250, 30);
         _chkNextMonthInvoice.Checked   = false;
         _chkNextMonthInvoice.ForeColor = Color.Crimson;
-        _chkNextMonthInvoice.Font      = new Font(_chkNextMonthInvoice.Font, FontStyle.Bold);
+        _chkNextMonthInvoice.BackColor = Color.FromArgb(255, 235, 238);
+        _chkNextMonthInvoice.FlatStyle = FlatStyle.Flat;
+        _chkNextMonthInvoice.Padding   = new Padding(4, 0, 0, 0);
+        _chkNextMonthInvoice.Font      = new Font(_chkNextMonthInvoice.Font.FontFamily, 10.5F, FontStyle.Bold);
         y += 48;
 
         _progress.SetBounds(P, y, 0, 6);
@@ -321,7 +311,6 @@ public class MainForm : Form
         page.Controls.AddRange(new Control[]
         {
             lblTitle, _btnSelectExcel, _lblExcelPath,
-            _btnExportSample, lblSampleHint,
             lblDate, _dtpOrderDate, _chkAutoDate,
             sep, _btnGenerate, _chkSplitByVendor, _chkNextMonthInvoice, _progress, _lblStatus,
             _lblValidation, _dgvErrors,
@@ -741,7 +730,6 @@ public class MainForm : Form
     {
         _btnGenerate.Enabled    = !busy;
         _btnSelectExcel.Enabled = !busy;
-        _btnExportSample.Enabled = !busy;
         _chkSplitByVendor.Enabled = !busy;
         _chkNextMonthInvoice.Enabled = !busy;
         _chkAutoDate.Enabled = !busy;
@@ -850,30 +838,6 @@ public class MainForm : Form
 
         SetStatus("已選擇：" + Path.GetFileName(path));
         ActivityLogger.Log("載入Excel", source: Path.GetFileName(path));
-    }
-
-    void BtnExportSample_Click(object? sender, EventArgs e)
-    {
-        using var dlg = new SaveFileDialog
-        {
-            Title = "儲存範例 Excel", Filter = "Excel 活頁簿 (*.xlsx)|*.xlsx",
-            FileName = "訂購單範本.xlsx", DefaultExt = "xlsx",
-        };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        try
-        {
-            ExcelExporter.ExportSample(dlg.FileName);
-            ActivityLogger.Log("匯出範例Excel", output: Path.GetFileName(dlg.FileName));
-            if (MessageBox.Show("範例 Excel 已匯出，是否立即開啟？", "完成",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-                Process.Start(new ProcessStartInfo(dlg.FileName) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ActivityLogger.Log("匯出範例Excel", output: Path.GetFileName(dlg.FileName),
-                success: false, error: ex.Message);
-            MessageBox.Show("匯出失敗：" + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
     }
 
     string? GetOutputDirectory(string excelPath, GeneralSettings settings, string title)
@@ -1039,20 +1003,45 @@ public class MainForm : Form
 
             SetBusy(true, "正在產生 PDF（分廠商）…");
             List<(string Vendor, string FilePath)>? splitFiles = null;
+            string? batchPrintPath = null;
             string? splitErr = null;
             try
             {
-                splitFiles = await Task.Run(() =>
-                    PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospitalSnap,
-                        maxRowsSnap, nextMonthInvoiceSnap));
+                (splitFiles, batchPrintPath) = await Task.Run(() =>
+                {
+                    var files = PdfGenerator.BuildPdfPerVendor(ordSnap2, splitDir, dateSnap2, stem2, hospitalSnap,
+                        maxRowsSnap, nextMonthInvoiceSnap);
+
+                    string batchPath = Path.Combine(splitDir, $"000_{stem2}_整批列印用.pdf");
+                    string tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".pdf");
+                    try
+                    {
+                        using (var pdfStream = File.Create(tempPath))
+                            PdfGenerator.BuildPdf(ordSnap2, pdfStream, dateSnap2, hospitalSnap,
+                                maxRowsSnap, nextMonthInvoiceSnap);
+                        File.Move(tempPath, batchPath, overwrite: true);
+                    }
+                    catch
+                    {
+                        try { File.Delete(tempPath); } catch { }
+                        throw;
+                    }
+
+                    return (files, batchPath);
+                });
             }
             catch (Exception ex) { splitErr = ex.Message; }
             finally { SetBusy(false); }
 
             if (splitFiles != null)
+            {
                 foreach (var (_, fp) in splitFiles)
                     ActivityLogger.Log("產生PDF", source: Path.GetFileName(excelPath),
                         output: Path.GetFileName(fp), success: true);
+                if (batchPrintPath != null)
+                    ActivityLogger.Log("產生PDF", source: Path.GetFileName(excelPath),
+                        output: Path.GetFileName(batchPrintPath), success: true);
+            }
 
             if (splitErr != null)
             {
@@ -1064,9 +1053,10 @@ public class MainForm : Form
             }
 
             int sc = splitFiles!.Count;
-            SetStatus($"完成！共 {sc} 家廠商，PDF 已存於 {splitDir}", success: true);
+            string batchName = batchPrintPath != null ? Path.GetFileName(batchPrintPath) : "000_整批列印用.pdf";
+            SetStatus($"完成！共 {sc} 家廠商，已產生整批列印檔 {batchName}", success: true);
             if (MessageBox.Show(
-                    $"已產生 {sc} 個 PDF 檔案（每家廠商一個）。\n是否開啟輸出目錄？",
+                    $"已產生 {sc} 個分廠商 PDF，並另外產生整批列印用 PDF：\n{batchName}\n\n請列印這一個 000_ 開頭檔案，避免 Windows 多選列印亂序。\n\n是否開啟輸出目錄？",
                     "完成", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(splitDir) { UseShellExecute = true });
             return;
