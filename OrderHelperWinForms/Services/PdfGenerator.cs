@@ -521,11 +521,23 @@ public static class PdfGenerator
             string fileName = $"{index:D3}_{inputStem}_{safeName}_訂購單.pdf";
             string filePath = System.IO.Path.Combine(outputDir, fileName);
 
-            // Same-day reruns for the same vendor (e.g. a second batch processed
-            // later in the day) must not clobber the earlier PDF; append -1, -2, ...
+            // Same-day reruns for the same vendor (e.g. a second batch processed later
+            // in the day, quite possibly from a differently-named Excel file) must not
+            // clobber the earlier PDF; append -1, -2, ... based on how many PDFs already
+            // exist for this vendor today, regardless of this run's file-name/stem/index.
             // Next-month-invoice batches are exempt since they're one-off runs.
             if (!nextMonthInvoice)
+            {
+                int priorToday = CountTodaysVendorPdfs(outputDir, safeName);
+                if (priorToday > 0)
+                {
+                    string dir  = System.IO.Path.GetDirectoryName(filePath) ?? "";
+                    string stem = System.IO.Path.GetFileNameWithoutExtension(filePath);
+                    string ext  = System.IO.Path.GetExtension(filePath);
+                    filePath = System.IO.Path.Combine(dir, $"{stem}-{priorToday}{ext}");
+                }
                 filePath = NextAvailablePath(filePath);
+            }
 
             using var writer = new PdfWriter(filePath);
             using var pdfDoc = new PdfDocument(writer);
@@ -554,6 +566,16 @@ public static class PdfGenerator
     {
         var invalid = new HashSet<char>(System.IO.Path.GetInvalidFileNameChars());
         return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
+    }
+
+    // Counts PDFs already on disk today for this vendor, matched by the "_{vendor}_訂購單"
+    // filename segment so it's independent of this run's input-file stem or vendor index.
+    static int CountTodaysVendorPdfs(string outputDir, string safeVendorName)
+    {
+        if (!Directory.Exists(outputDir)) return 0;
+        var today = DateTime.Today;
+        return Directory.EnumerateFiles(outputDir, $"*_{safeVendorName}_訂購單*.pdf")
+            .Count(f => File.GetLastWriteTime(f).Date == today);
     }
 
     static string NextAvailablePath(string filePath)
